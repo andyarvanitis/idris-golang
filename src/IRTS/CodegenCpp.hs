@@ -6,7 +6,7 @@ import Idris.AbsSyntax hiding (TypeCase)
 import IRTS.Bytecode
 import IRTS.Lang
 import IRTS.Simplified
-import IRTS.System
+import IRTS.System hiding (getDataDir)
 import IRTS.CodegenCommon
 import IRTS.Cpp.AST
 import Idris.Core.TT
@@ -27,11 +27,10 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Text.Printf as PF
 
+import Paths_idris_cpp
+
 -- TODO: better way to do this?
-#ifdef MACOSX
-ccStandard = "-std=c++11 -stdlib=libc++"
-libStandard = "-lc++"
-#elif FREEBSD
+#if defined(MACOSX) || defined(FREEBSD)
 ccStandard = "-std=c++11 -stdlib=libc++"
 libStandard = "-lc++"
 #else
@@ -76,7 +75,7 @@ codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
   let decls = concatMap toDecl (map fst bytecode)
   let cpp = concatMap (toCpp (CompileInfo True)) bytecode
   let (header, rt) = ("", "")
-  path <- (++) <$> getDataDir <*> (pure "/cpprts/")
+  path <- getDataDir -- (++) <$> getDataDir <*> (pure "/cpprts/")
   let cppout = (  T.pack (headers includes)
                   `T.append` namespaceBegin
                   `T.append` T.pack decls
@@ -96,12 +95,12 @@ codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
                     ccStandard ++ " " ++
                     ccDbg dbg ++ " " ++
                     ccFlags ++
-                    " -I " ++ path ++
+                    " -I " ++ path ++ "/include" ++
                     " -I. " ++ objs ++ " -x c++ " ++
                     (if (outputType == Executable) then "" else " -c ") ++
                     " " ++ tmpn ++
                     " " ++ libStandard ++ " " ++
-                    " -L " ++ path ++
+                    " -L " ++ path ++ "/lib" ++
                     " " ++ libRuntime ++ " " ++
                     " " ++ libFlags ++
                     " " ++ incFlags ++

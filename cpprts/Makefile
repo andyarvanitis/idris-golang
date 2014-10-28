@@ -1,7 +1,7 @@
 include ../config.mk
 
-OBJS = bigint.o io.o main.o types.o utility.o vm.o
-HDRS = box.h exceptions.h io.h main.h mem.h types.h utility.h vm.h
+OBJS = *.o
+HDRS = *.h
 CPPFLAGS:=-fPIC $(CPPFLAGS:)
 CPPFLAGS += $(GMP_INCLUDE_DIR) $(GMP) -DIDRIS_TARGET_OS="\"$(OS)\""
 CPPFLAGS += "-std=c++11"
@@ -16,8 +16,9 @@ $(LIBTARGET) : $(OBJS)
 	ranlib $(LIBTARGET)
 
 install :
-	mkdir -p $(TARGET)
-	install $(LIBTARGET) $(HDRS) $(TARGET)
+	mkdir -p $(TARGET)/include $(TARGET)/lib
+	install $(HDRS) $(TARGET)/include/
+	install $(LIBTARGET) $(TARGET)/lib/
 
 clean :
 	rm -f $(OBJS) $(LIBTARGET) $(DYLIBTARGET)
