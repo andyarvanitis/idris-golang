@@ -1,0 +1,66 @@
+Name:           idris-cpp
+Version:        0.0.0.1
+License:        BSD3
+License-file:   LICENSE
+Author:         Andy Arvanitis
+
+Build-Type:	Custom
+Cabal-Version:  >= 1.8
+Extra-source-files:
+		cpprts/Makefile
+		cpprts/*.cpp
+
+Data-files:
+    cpprts/idris_runtime.h
+    cpprts/bigint.h
+    cpprts/box.h
+    cpprts/callbacks.h
+    cpprts/exceptions.h
+    cpprts/io.h
+    cpprts/lambdas.h
+    cpprts/main.h
+    cpprts/mem.h
+    cpprts/types.h
+    cpprts/types_aliases.h
+    cpprts/types_extern.h
+    cpprts/utility.h
+    cpprts/vm.h
+
+Executable idris-cpp
+  Main-is:        Main.hs
+  hs-source-dirs: src
+
+  Build-depends:  idris
+                , base
+                , containers
+                , directory
+                , filepath
+                , haskeline >= 0.7
+                , mtl
+                , process
+                , text
+                , transformers
+                , vector
+
+  other-modules: IRTS.CodegenCpp
+               , IRTS.Cpp.AST
+
+  if os(linux)
+     cpp-options:   -DLINUX
+     build-depends: unix < 2.8
+  if os(freebsd)
+     cpp-options:   -DFREEBSD
+     build-depends: unix < 2.8
+  if os(dragonfly)
+     cpp-options:   -DDRAGONFLY
+     build-depends: unix < 2.8
+  if os(darwin)
+     cpp-options:   -DMACOSX
+     build-depends: unix < 2.8
+  if os(windows)
+     cpp-options:   -DWINDOWS
+     build-depends: Win32 < 2.4
+
+  ghc-prof-options: -auto-all -caf-all
+  ghc-options:      -threaded -rtsopts -funbox-strict-fields
+  
