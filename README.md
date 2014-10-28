@@ -1,4 +1,4 @@
 idris-cplusplus
 ===============
 
-C++ backend for Idris
+Experimental C++11 backend for Idris
