@@ -1,7 +1,7 @@
 include ../config.mk
 
-OBJS = *.o
-HDRS = *.h
+OBJS = bigint.o io.o main.o types.o utility.o vm.o
+HDRS = bigint.h box.h callbacks.h exceptions.h idris_runtime.h io.h lambdas.h main.h mem.h types.h types_aliases.h types_extern.h utility.h vm.h
 CPPFLAGS:=-fPIC $(CPPFLAGS:)
 CPPFLAGS += $(GMP_INCLUDE_DIR) $(GMP) -DIDRIS_TARGET_OS="\"$(OS)\""
 CPPFLAGS += "-std=c++11"
