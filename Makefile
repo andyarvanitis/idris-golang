@@ -10,7 +10,7 @@ build: dist/setup-config
 	$(CABAL) build $(CABALFLAGS)
 
 test:
-	test/idris001/run
+	cd ../Idris-dev/test && ./runtest.pl without io003 reg031 --codegen cpp
 
 lib_clean:
 clean:
