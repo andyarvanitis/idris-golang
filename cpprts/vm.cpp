@@ -18,21 +18,27 @@ void project(shared_ptr<VirtualMachine>& vm,
   assert(value and value->getTypeId() == 'C');
   const auto & args = unbox<Con>(value).args;
   for (auto i=0; i < arity; i++) {
-    vm->valstack[vm->valstack_base + i + loc] = args[i];
+    vm->valstack[vm->valstack_base + i + loc] = move(args[i]);
+  }
+}
+
+static void prune_valstack(shared_ptr<VirtualMachine>& vm) {
+  const auto top = vm->valstack_top + 1;
+  while (vm->valstack.size() > top) {
+    vm->valstack.pop_back();
   }
 }
 
 void vm_call(shared_ptr<VirtualMachine>& vm,
              const Func& fn, const IndexType arg) {
   fn(vm, arg);
-
   while (vm->callstack.size() > 0) {
     auto func = get<0>(vm->callstack.top());
     auto arg  = get<1>(vm->callstack.top());
     vm->callstack.pop();
     func(vm, arg);
   };
-
+  prune_valstack(vm);
 }
 
 void vm_tailcall(shared_ptr<VirtualMachine>& vm,

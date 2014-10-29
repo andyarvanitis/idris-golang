@@ -508,7 +508,7 @@ cppOP _ reg oper args = CppAssign (translateReg reg) (cppOP' oper)
           strLen s = cppMeth s "length" []
 
 cppRESERVE :: CompileInfo -> Int -> Cpp
-cppRESERVE _ n = cppMeth cppSTACK "resize" [CppBinOp "+" (cppMeth cppSTACK "size" []) (CppNum $ CppInt n), CppNull]
+cppRESERVE _ n = cppMeth cppSTACK "resize" [CppBinOp "+" cppSTACKTOP (CppNum $ CppInt n), CppNull]
 
 cppSTACK :: Cpp
 cppSTACK = CppIdent "vm->valstack"
