@@ -21,7 +21,6 @@ import System.IO
 import System.Directory
 import Control.Monad.State
 import Control.Arrow
-import Control.Applicative ((<$>), (<*>), pure)
 
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
@@ -75,7 +74,7 @@ codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
   let decls = concatMap toDecl (map fst bytecode)
   let cpp = concatMap (toCpp (CompileInfo True)) bytecode
   let (header, rt) = ("", "")
-  path <- getDataDir -- (++) <$> getDataDir <*> (pure "/cpprts/")
+  path <- getDataDir
   let cppout = (  T.pack (headers includes)
                   `T.append` namespaceBegin
                   `T.append` T.pack decls
