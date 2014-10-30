@@ -1,7 +1,7 @@
 #ifndef __idris_cpp_runtime_vm_h_
 #define __idris_cpp_runtime_vm_h_
 
-#include <deque>
+#include <vector>
 #include <stack>
 #include "types.h"
 
@@ -9,7 +9,7 @@ namespace idris {
 
 //---------------------------------------------------------------------------------------
 
-using ValueStack = deque<Value>;
+using ValueStack = vector<Value>;
 using Func       = void (*)(shared_ptr<VirtualMachine>&, IndexType);
 using CallPair   = pair<Func,IndexType>;
 using CallStack  = stack<CallPair>;
@@ -30,6 +30,8 @@ void slide(shared_ptr<VirtualMachine>& vm,
 
 void project(shared_ptr<VirtualMachine>& vm,
              const Value& value, const IndexType loc, const int arity);
+
+void reserve(shared_ptr<VirtualMachine>& vm, size_t size);
 
 void vm_call(shared_ptr<VirtualMachine>& vm,
              const Func& fn, const IndexType arg);

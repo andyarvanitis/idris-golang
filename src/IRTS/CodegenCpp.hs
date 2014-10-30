@@ -305,6 +305,9 @@ cppSLIDE :: CompileInfo -> Int -> Cpp
 cppSLIDE _ 1 = CppAssign (cppLOC 0) (cppTOP 0)
 cppSLIDE _ n = CppApp (CppIdent "slide") [cppVM, CppNum (CppInt n)]
 
+cppRESERVE :: CompileInfo -> Int -> Cpp
+cppRESERVE _ n = cppCall "reserve" [cppVM, CppBinOp "+" cppSTACKTOP (CppNum $ CppInt n)]
+
 cppMKCON :: CompileInfo -> Reg -> Int -> [Reg] -> Cpp
 cppMKCON info r t rs =
   CppAssign (translateReg r) (
@@ -506,9 +509,6 @@ cppOP _ reg oper args = CppAssign (translateReg reg) (cppOP' oper)
 
           strLen :: Cpp -> Cpp
           strLen s = cppMeth s "length" []
-
-cppRESERVE :: CompileInfo -> Int -> Cpp
-cppRESERVE _ n = cppMeth cppSTACK "resize" [CppBinOp "+" cppSTACKTOP (CppNum $ CppInt n), CppNull]
 
 cppSTACK :: Cpp
 cppSTACK = CppIdent "vm->valstack"

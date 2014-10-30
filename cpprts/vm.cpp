@@ -1,4 +1,5 @@
 
+#include <algorithm>
 #include <cassert>
 #include "vm.h"
 
@@ -23,10 +24,13 @@ void project(shared_ptr<VirtualMachine>& vm,
   }
 }
 
-static void prune_valstack(shared_ptr<VirtualMachine>& vm) {
-  const auto top = vm->valstack_top + 1;
-  while (vm->valstack.size() > top) {
-    vm->valstack.pop_back();
+void reserve(shared_ptr<VirtualMachine>& vm, size_t size) {
+  if (vm->valstack_top + size > vm->valstack.size()) {
+    vm->valstack.resize(vm->valstack_top + size, nullptr);;
+  } else {
+    fill(vm->valstack.begin() + vm->valstack_top,
+         vm->valstack.begin() + vm->valstack_top + size,
+         nullptr);
   }
 }
 
@@ -39,7 +43,6 @@ void vm_call(shared_ptr<VirtualMachine>& vm,
     vm->callstack.pop();
     func(vm, arg);
   };
-  prune_valstack(vm);
 }
 
 void vm_tailcall(shared_ptr<VirtualMachine>& vm,
