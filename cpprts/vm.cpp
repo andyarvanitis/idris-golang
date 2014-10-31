@@ -25,13 +25,7 @@ void project(shared_ptr<VirtualMachine>& vm,
 }
 
 void reserve(shared_ptr<VirtualMachine>& vm, size_t size) {
-  if (vm->valstack_top + size > vm->valstack.size()) {
-    vm->valstack.resize(vm->valstack_top + size, nullptr);;
-  } else {
-    fill(vm->valstack.begin() + vm->valstack_top,
-         vm->valstack.begin() + vm->valstack_top + size,
-         nullptr);
-  }
+  vm->valstack.resize(vm->valstack_top + size, nullptr);;
 }
 
 void vm_call(shared_ptr<VirtualMachine>& vm,
