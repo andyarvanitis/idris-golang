@@ -302,7 +302,6 @@ cppERROR :: CompileInfo -> String -> Cpp
 cppERROR _ = CppError
 
 cppSLIDE :: CompileInfo -> Int -> Cpp
-cppSLIDE _ 1 = CppAssign (cppLOC 0) (cppTOP 0)
 cppSLIDE _ n = CppApp (CppIdent "slide") [cppVM, CppNum (CppInt n)]
 
 cppRESERVE :: CompileInfo -> Int -> Cpp
@@ -352,11 +351,6 @@ cppCONSTCASE info reg cases def =
 
 cppPROJECT :: CompileInfo -> Reg -> Int -> Int -> Cpp
 cppPROJECT _ reg loc 0  = CppNoop
-cppPROJECT _ reg loc 1  =
-  CppAssign (cppLOC loc) (
-    CppIndex (CppProj (cppUNBOX cppCON $ translateReg reg) "args")
-             (CppNum $ CppInt 0)
-  )
 cppPROJECT _ reg loc ar =
   CppApp (CppIdent "project") [ cppVM
                               , translateReg reg

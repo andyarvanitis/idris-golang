@@ -12,7 +12,7 @@ namespace idris {
 using ValueStack = vector<Value>;
 using Func       = void (*)(shared_ptr<VirtualMachine>&, IndexType);
 using CallPair   = pair<Func,IndexType>;
-using CallStack  = stack<CallPair>;
+using CallStack  = stack<CallPair, vector<CallPair>>;
 
 //---------------------------------------------------------------------------------------
 struct VirtualMachine {

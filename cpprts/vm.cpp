@@ -1,5 +1,4 @@
 
-#include <algorithm>
 #include <cassert>
 #include "vm.h"
 
@@ -10,7 +9,7 @@ namespace idris {
 void slide(shared_ptr<VirtualMachine>& vm,
            const size_t num_args) {
   for (auto i=0; i < num_args; i++) {
-    vm->valstack[vm->valstack_base + i] = vm->valstack[vm->valstack_top + i];
+    vm->valstack[vm->valstack_base + i] = move(vm->valstack[vm->valstack_top + i]);
   }
 }
 
@@ -18,13 +17,13 @@ void project(shared_ptr<VirtualMachine>& vm,
              const Value& value, const IndexType loc, const int arity) {
   assert(value and value->getTypeId() == 'C');
   auto & args = unbox<Con>(value).args;
-  for (auto i=0; i < arity; i++) {
+  for (auto i = 0; i < arity; i++) {
     vm->valstack[vm->valstack_base + i + loc] = args[i];
   }
 }
 
 void reserve(shared_ptr<VirtualMachine>& vm, size_t size) {
-  vm->valstack.resize(size, nullptr); // also shrinks the stack, if appropriate
+  vm->valstack.resize(size + 1, nullptr); // also shrinks the stack, if appropriate
 }
 
 void vm_call(shared_ptr<VirtualMachine>& vm,
