@@ -19,13 +19,12 @@ void project(shared_ptr<VirtualMachine>& vm,
   assert(value and value->getTypeId() == 'C');
   auto & args = unbox<Con>(value).args;
   for (auto i=0; i < arity; i++) {
-    Value& arg = const_cast<Value&>(args[i]); // TODO: revisit this
-    vm->valstack[vm->valstack_base + i + loc] = arg;
+    vm->valstack[vm->valstack_base + i + loc] = args[i];
   }
 }
 
 void reserve(shared_ptr<VirtualMachine>& vm, size_t size) {
-  vm->valstack.resize(vm->valstack_top + size, nullptr);;
+  vm->valstack.resize(size, nullptr); // also shrinks the stack, if appropriate
 }
 
 void vm_call(shared_ptr<VirtualMachine>& vm,

@@ -28,7 +28,7 @@ struct TypedBoxedValue : public BoxedValue {
   
   char getTypeId() const { return N; }
   
-  const T value;
+  T value;
   
   template <typename... ArgTypes>
   TypedBoxedValue(ArgTypes&&... args) : value(forward<ArgTypes>(args)...) {}
@@ -55,7 +55,7 @@ inline auto box(ArgTypes&&... args) -> Value {
 //---------------------------------------------------------------------------------------
 
 template <typename T>
-inline auto unbox(const Value& boxedValue) -> const decltype(T::value) & {
+inline auto unbox(const Value& boxedValue) -> decltype(T::value) & {
   assert(boxedValue);
   return dynamic_pointer_cast<T>(boxedValue)->value;
 }
