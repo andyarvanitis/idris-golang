@@ -34,10 +34,10 @@ void project(shared_ptr<VirtualMachine>& vm,
 void reserve(shared_ptr<VirtualMachine>& vm, size_t size);
 
 void vm_call(shared_ptr<VirtualMachine>& vm,
-             const Func& fn, const IndexType arg);
+             const Func& fn, const IndexType base);
 
 void vm_tailcall(shared_ptr<VirtualMachine>& vm,
-                const Func& fn, const IndexType arg);
+                const Func& fn, const IndexType base);
 
 //---------------------------------------------------------------------------------------
 

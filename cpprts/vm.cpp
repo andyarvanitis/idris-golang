@@ -27,19 +27,19 @@ void reserve(shared_ptr<VirtualMachine>& vm, size_t size) {
 }
 
 void vm_call(shared_ptr<VirtualMachine>& vm,
-             const Func& fn, const IndexType arg) {
-  fn(vm, arg);
+             const Func& fn, const IndexType base) {
+  fn(vm, base);
   while (vm->callstack.size() > 0) {
-    auto func = get<0>(vm->callstack.top());
-    auto arg  = get<1>(vm->callstack.top());
+    auto callstackFn     = get<0>(vm->callstack.top());
+    auto callstackFnBase = get<1>(vm->callstack.top());
     vm->callstack.pop();
-    func(vm, arg);
+    callstackFn(vm, callstackFnBase);
   };
 }
 
 void vm_tailcall(shared_ptr<VirtualMachine>& vm,
-                 const Func& fn, const IndexType arg) {
-   vm->callstack.push({fn,arg});
+                 const Func& fn, const IndexType base) {
+   vm->callstack.push({fn,base});
 }
 
 } // namespace idris
