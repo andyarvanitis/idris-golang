@@ -8,32 +8,26 @@ namespace idris {
 
 //-------------------------------------------------------------------------------------------------
 
-void process_args(shared_ptr<VirtualMachine>&, Value&, const IndexType) {
+void process_args(shared_ptr<VirtualMachine>&, Value&) {
 }
 
 template <typename A, typename... ArgTypes>
-void process_args(shared_ptr<VirtualMachine>& vm, Value& res, const IndexType oldbase,
-                  A arg, ArgTypes&&... args) {
+void process_args(shared_ptr<VirtualMachine>& vm, Value& res, A arg, ArgTypes&&... args) {
 
   void _idris__123_APPLY0_125_(shared_ptr<VirtualMachine>&, IndexType);
 
   if (res->getTypeId() == 'C') {
-    vm->valstack_top += 1;
+    reserve(vm, vm->valstack_top + 2);
     vm->valstack[vm->valstack_top] = res;
     vm->valstack[vm->valstack_top + 1] = box<typename FromNative<A>::type>(arg);
-    slide(vm, 2);
-    vm->valstack_top = vm->valstack_base + 2;
-    _idris__123_APPLY0_125_(vm, oldbase);
-    while (vm->callstack.size()) {
-      auto func = get<0>(vm->callstack.top());
-      auto farg = get<1>(vm->callstack.top());
-      vm->callstack.pop();
-      func(vm, farg);
-    }
+    auto myoldbase = vm->valstack_base;
+    vm->valstack_base = vm->valstack_top;
+    vm->valstack_top += 2;
+    vm_call(vm, _idris__123_APPLY0_125_, myoldbase);
     res = vm->ret;
   }
 
-  process_args(vm, res, oldbase, forward<ArgTypes>(args)...);
+  process_args(vm, res, forward<ArgTypes>(args)...);
 }
 
 //-------------------------------------------------------------------------------------------------
@@ -41,7 +35,6 @@ void process_args(shared_ptr<VirtualMachine>& vm, Value& res, const IndexType ol
 template <typename RetType, typename... ArgTypes>
 RetType proxy_function(const weak_ptr<VirtualMachine>& vm_weak, 
                        const weak_ptr<BoxedValue>& con_weak, 
-                       const IndexType oldbase,
                        ArgTypes... args) {  
 
   // Make sure the vm hasn't been destroyed (nor the function con)
@@ -54,7 +47,7 @@ RetType proxy_function(const weak_ptr<VirtualMachine>& vm_weak,
     vm->callstack.swap(callstack);
   
     auto res = con;
-    process_args(vm, res, oldbase, forward<ArgTypes>(args)...);
+    process_args(vm, res, forward<ArgTypes>(args)...);
     auto result = vm->ret;
 
     // Restore the original stack

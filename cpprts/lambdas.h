@@ -10,13 +10,12 @@
 #define WRAPPER_VARIANT_(func, nargs) WRAPPER_VARIANT__(func, nargs)
 #define WRAPPER_VARIANT__(func, nargs) func ## _ ## nargs
 
-#define LAMBDA_WRAPPER(fcon, ...) [](weak_ptr<VirtualMachine> _vm, \
-                                     weak_ptr<BoxedValue> _fcon, \
-                                     const IndexType _oldbase){ \
+#define LAMBDA_WRAPPER(con, ...) [](weak_ptr<VirtualMachine> _vm, \
+                                    weak_ptr<BoxedValue> _con){ \
   return WRAPPER_VARIANT(LAMBDA_WRAPPER, __VA_ARGS__)(__VA_ARGS__); \
-}(vm, fcon, oldbase) // call this outer lambda right now
+}(vm, con) // call this outer lambda right now
 
-#define LAMBDA_CAPTURE_LIST _vm, _fcon, _oldbase
+#define LAMBDA_CAPTURE_LIST _vm, _con
 
 #define LAMBDA_WRAPPER_1(R) \
 [LAMBDA_CAPTURE_LIST]() -> R { \
