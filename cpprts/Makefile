@@ -6,6 +6,12 @@ CXXFLAGS:=-fPIC $(CPPFLAGS:)
 CXXFLAGS += $(GMP_INCLUDE_DIR) $(GMP) -DIDRIS_TARGET_OS="\"$(OS)\""
 CXXFLAGS += "-std=c++11"
 CXXFLAGS += -DIDRIS_TARGET_TRIPLE="\"$(MACHINE)\""
+CXXFLAGS += "-O2"
+CXXFLAGS += "-DNDEBUG"
+CXXFLAGS += "-ftree-vectorize"
+CXXFLAGS += "-fno-rtti"
+CXXFLAGS += "-fno-exceptions"
+CXXFLAGS += "-fomit-frame-pointer"
 
 LIBTARGET = libidris_cpp_rts.a
 

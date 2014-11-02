@@ -126,7 +126,7 @@ codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
 
       ccDbg DEBUG = "-g"
       ccDbg TRACE = "-O2"
-      ccDbg _ = "-O2"
+      ccDbg _ = "-O2 -DNDEBUG -ftree-vectorize -fno-rtti -fno-exceptions -fomit-frame-pointer"
 
       toDecl :: Name -> String
       toDecl f = "void " ++ translateName f ++ "(" ++ (intercalate ", " cppFUNCPARMS) ++ ");\n"

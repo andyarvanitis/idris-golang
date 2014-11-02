@@ -57,7 +57,7 @@ inline auto box(ArgTypes&&... args) -> Value {
 template <typename T>
 inline auto unbox(const Value& boxedValue) -> decltype(T::value) & {
   assert(boxedValue);
-  return dynamic_pointer_cast<T>(boxedValue)->value;
+  return static_pointer_cast<T>(boxedValue)->value;
 }
 
 //---------------------------------------------------------------------------------------
