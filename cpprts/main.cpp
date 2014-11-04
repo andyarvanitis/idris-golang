@@ -18,11 +18,5 @@ int main(int argc,char* argv[]) {
   IdrisMain::argc = argc;
   IdrisMain::argv = argv;
   auto vm = make_shared<VirtualMachine>();
-  _idris__123_runMain0_125_(vm, 0);
-  while (vm->callstack.size() > 0) {
-    auto func = get<0>(vm->callstack.top());
-    auto arg  = get<1>(vm->callstack.top());
-    vm->callstack.pop();
-    func(vm, arg);
-  };
+  vm_call(vm, _idris__123_runMain0_125_, 0);
 }
