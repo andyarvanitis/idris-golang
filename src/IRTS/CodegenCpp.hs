@@ -8,7 +8,7 @@ import IRTS.Lang
 import IRTS.Simplified
 import IRTS.System hiding (getDataDir)
 import IRTS.CodegenCommon
-import IRTS.Cpp.AST
+import IRTS.IL.AST
 import Idris.Core.TT
 import Util.System
 
@@ -39,7 +39,7 @@ libStandard = "-lstdc++"
 
 data CompileInfo = CompileInfo { compileInfoNeedsBigInt :: Bool } -- TODO: not used right now
 
-data CppTarget = Cpp deriving Eq
+data ILTarget = ILExpr deriving Eq
 
 codegenCpp :: CodeGenerator
 codegenCpp ci =
@@ -78,7 +78,7 @@ codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
   let cppout = (  T.pack (headers includes)
                   `T.append` namespaceBegin
                   `T.append` T.pack decls
-                  `T.append` T.concat (map compileCpp cpp)
+                  `T.append` T.concat (map compileIL cpp)
                   `T.append` namespaceEnd
                )
   case outputType of
@@ -129,7 +129,7 @@ codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
       ccDbg _ = "-O2 -DNDEBUG -ftree-vectorize -fno-rtti -fno-exceptions -fomit-frame-pointer"
 
       toDecl :: Name -> String
-      toDecl f = "void " ++ translateName f ++ "(" ++ (intercalate ", " cppFUNCPARMS) ++ ");\n"
+      toDecl f = "void " ++ translateName f ++ "(" ++ (intercalate ", " mkILFUNCPARMS) ++ ");\n"
 
       namespaceBegin :: T.Text
       namespaceBegin = T.pack "namespace idris {\n"
@@ -138,526 +138,526 @@ codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
       namespaceEnd = T.pack "} // namespace idris\n"
 
 toCpp info (name, bc) =
-  [ CppIdent $ "void " ++ translateName name,
-    CppFunction cppFUNCPARMS (
-      CppSeq $ CppAlloc (Just cppBASETYPENAME) cppMYOLDBASENAME Nothing
-               : CppPreOp "(void)" cppMYOLDBASE
+  [ ILIdent $ "void " ++ translateName name,
+    ILFunction mkILFUNCPARMS (
+      ILSeq $ ILAlloc (Just mkILBASETYPENAME) mkILMYOLDBASENAME Nothing
+               : ILPreOp "(void)" mkILMYOLDBASE
                : map (translateBC info)bc
     )
   ]
 
-translateReg :: Reg -> Cpp
+translateReg :: Reg -> ILExpr
 translateReg reg =
   case reg of
-    RVal -> cppRET
-    Tmp  -> CppRaw "//TMPREG"
-    L n  -> cppLOC n
-    T n  -> cppTOP n
+    RVal -> mkILRET
+    Tmp  -> ILRaw "//TMPREG"
+    L n  -> mkILLOC n
+    T n  -> mkILTOP n
 
-translateConstant :: Const -> Cpp
-translateConstant (I i)                    = CppNum (CppInt i)
-translateConstant (Fl f)                   = CppNum (CppFloat f)
-translateConstant (Ch c)                   = CppChar (translateChar c)
-translateConstant (Str s)                  = CppString $ concatMap translateChar s
-translateConstant (AType (ATInt ITNative)) = CppType CppIntTy
-translateConstant StrType                  = CppType CppStringTy
-translateConstant (AType (ATInt ITBig))    = CppType CppIntegerTy
-translateConstant (AType ATFloat)          = CppType CppFloatTy
-translateConstant (AType (ATInt ITChar))   = CppType CppCharTy
-translateConstant PtrType                  = CppType CppPtrTy
-translateConstant Forgot                   = CppType CppForgotTy
-translateConstant (BI i)                   = CppNum $ CppInteger (CppBigInt i)
-translateConstant (B8 b)                   = CppWord (CppWord8 b)
-translateConstant (B16 b)                  = CppWord (CppWord16 b)
-translateConstant (B32 b)                  = CppWord (CppWord32 b)
-translateConstant (B64 b)                  = CppWord (CppWord64 b)
+translateConstant :: Const -> ILExpr
+translateConstant (I i)                    = ILNum (ILInt i)
+translateConstant (Fl f)                   = ILNum (ILFloat f)
+translateConstant (Ch c)                   = ILChar (translateChar c)
+translateConstant (Str s)                  = ILString $ concatMap translateChar s
+translateConstant (AType (ATInt ITNative)) = ILType ILIntTy
+translateConstant StrType                  = ILType ILStringTy
+translateConstant (AType (ATInt ITBig))    = ILType ILIntegerTy
+translateConstant (AType ATFloat)          = ILType ILFloatTy
+translateConstant (AType (ATInt ITChar))   = ILType ILCharTy
+translateConstant PtrType                  = ILType ILPtrTy
+translateConstant Forgot                   = ILType ILForgotTy
+translateConstant (BI i)                   = ILNum $ ILInteger (ILBigInt i)
+translateConstant (B8 b)                   = ILWord (ILWord8 b)
+translateConstant (B16 b)                  = ILWord (ILWord16 b)
+translateConstant (B32 b)                  = ILWord (ILWord32 b)
+translateConstant (B64 b)                  = ILWord (ILWord64 b)
 translateConstant c =
-  CppError $ "Unimplemented Constant: " ++ show c
+  ILError $ "Unimplemented Constant: " ++ show c
 
 translateChar :: Char -> String
 translateChar ch
   | isAscii ch && isAlphaNum ch  = [ch]
   | ch `elem` [' ','_', ',','.'] = [ch]
-  | otherwise                    = cppCodepoint (ord ch)
+  | otherwise                    = mkILCodepoint (ord ch)
 
 translateName :: Name -> String
 translateName n = "_idris_" ++ concatMap cchar (showCG n)
   where cchar x | isAlphaNum x = [x]
                 | otherwise    = "_" ++ show (fromEnum x) ++ "_"
 
-cppASSIGN :: CompileInfo -> Reg -> Reg -> Cpp
-cppASSIGN _ r1 r2 = CppAssign (translateReg r1) (translateReg r2)
+mkILASSIGN :: CompileInfo -> Reg -> Reg -> ILExpr
+mkILASSIGN _ r1 r2 = ILAssign (translateReg r1) (translateReg r2)
 
-cppASSIGNCONST :: CompileInfo -> Reg -> Const -> Cpp
-cppASSIGNCONST _ r c = CppAssign (translateReg r) (cppBOX' $ translateConstant c)
+mkILASSIGNCONST :: CompileInfo -> Reg -> Const -> ILExpr
+mkILASSIGNCONST _ r c = ILAssign (translateReg r) (mkILBOX' $ translateConstant c)
 
-cppCALL :: CompileInfo -> Name -> Cpp
-cppCALL _ n =
-  CppApp (
-    CppIdent "vm_call"
-  ) [cppVM, CppIdent (translateName n), cppMYOLDBASE]
+mkILCALL :: CompileInfo -> Name -> ILExpr
+mkILCALL _ n =
+  ILApp (
+    ILIdent "vm_call"
+  ) [mkILVM, ILIdent (translateName n), mkILMYOLDBASE]
 
-cppTAILCALL :: CompileInfo -> Name -> Cpp
-cppTAILCALL _ n =
-  CppApp (
-    CppIdent "vm_tailcall"
-  ) [cppVM, CppIdent (translateName n), cppOLDBASE]
+mkILTAILCALL :: CompileInfo -> Name -> ILExpr
+mkILTAILCALL _ n =
+  ILApp (
+    ILIdent "vm_tailcall"
+  ) [mkILVM, ILIdent (translateName n), mkILOLDBASE]
 
-cppFOREIGN :: CompileInfo -> Reg -> String -> [(FType, Reg)] -> FType -> Cpp
-cppFOREIGN _ reg n args ret =
+mkILFOREIGN :: CompileInfo -> Reg -> String -> [(FType, Reg)] -> FType -> ILExpr
+mkILFOREIGN _ reg n args ret =
   case n of
     "fileOpen" -> let [(_, name),(_, mode)] = args in
-                  CppAssign (translateReg reg)
-                            (cppBOX cppManagedPtr $ cppCall "fileOpen" [cppUNBOX cppSTRING $ translateReg name,
-                                                                        cppUNBOX cppSTRING $ translateReg mode])
+                  ILAssign (translateReg reg)
+                            (mkILBOX mkILManagedPtr $ mkILCall "fileOpen" [mkILUNBOX mkILSTRING $ translateReg name,
+                                                                        mkILUNBOX mkILSTRING $ translateReg mode])
     "fileClose" -> let [(_, fh)] = args in
-                   CppAssign (translateReg reg) (cppCall "fileClose" [cppUNBOX cppManagedPtr $ translateReg fh])
+                   ILAssign (translateReg reg) (mkILCall "fileClose" [mkILUNBOX mkILManagedPtr $ translateReg fh])
 
     "fputStr" -> let [(_, fh),(_, str)] = args in
-                 CppAssign (translateReg reg) (cppCall "fputStr" [cppUNBOX cppManagedPtr $ translateReg fh,
-                                                                      cppUNBOX cppSTRING $ translateReg str])
+                 ILAssign (translateReg reg) (mkILCall "fputStr" [mkILUNBOX mkILManagedPtr $ translateReg fh,
+                                                                      mkILUNBOX mkILSTRING $ translateReg str])
     "fileEOF" -> let [(_, fh)] = args in
-                 CppAssign (translateReg reg) (cppBOX cppINT $ cppCall "fileEOF" [cppUNBOX cppManagedPtr $ translateReg fh])
+                 ILAssign (translateReg reg) (mkILBOX mkILINT $ mkILCall "fileEOF" [mkILUNBOX mkILManagedPtr $ translateReg fh])
 
     "fileError" -> let [(_, fh)] = args in
-                   CppAssign (translateReg reg) (cppBOX cppINT $ cppCall "fileError" [cppUNBOX cppManagedPtr $ translateReg fh])
+                   ILAssign (translateReg reg) (mkILBOX mkILINT $ mkILCall "fileError" [mkILUNBOX mkILManagedPtr $ translateReg fh])
 
     "isNull" -> let [(_, arg)] = args in
-                CppAssign (translateReg reg) (cppBOX cppBOOL $ CppBinOp "==" (translateReg arg) CppNull)
+                ILAssign (translateReg reg) (mkILBOX mkILBOOL $ ILBinOp "==" (translateReg arg) ILNull)
 
     "idris_eqPtr" -> let [(_, lhs),(_, rhs)] = args in
-                  CppAssign (translateReg reg) (CppBinOp "==" (translateReg lhs) (translateReg rhs))
+                  ILAssign (translateReg reg) (ILBinOp "==" (translateReg lhs) (translateReg rhs))
 
     "getenv" -> let [(_, arg)] = args in
-                CppAssign (translateReg reg) (cppBOX cppSTRING $ cppCall "getenv" [cppMeth (cppUNBOX cppSTRING $ translateReg arg) "c_str" []])
+                ILAssign (translateReg reg) (mkILBOX mkILSTRING $ mkILCall "getenv" [mkILMeth (mkILUNBOX mkILSTRING $ translateReg arg) "c_str" []])
 
-    _ -> CppAssign (translateReg reg) (let callexpr = CppFFI n (map generateWrapper args) in
+    _ -> ILAssign (translateReg reg) (let callexpr = ILFFI n (map generateWrapper args) in
                                        case ret of
-                                         FUnit -> CppBinOp "," CppNull callexpr
-                                         _     -> cppBOX (T.unpack . compileCpp $ foreignToBoxed ret) $ callexpr)
+                                         FUnit -> ILBinOp "," ILNull callexpr
+                                         _     -> mkILBOX (T.unpack . compileIL $ foreignToBoxed ret) $ callexpr)
     where
-      generateWrapper :: (FType, Reg) -> Cpp
+      generateWrapper :: (FType, Reg) -> ILExpr
       generateWrapper (ty, reg) =
         case ty of
           FFunction aty rty ->
-            CppApp (CppIdent $ "LAMBDA_WRAPPER") [translateReg reg, cType aty, cType rty]
+            ILApp (ILIdent $ "LAMBDA_WRAPPER") [translateReg reg, cType aty, cType rty]
           FFunctionIO -> error "FFunctionIO not supported yet"
-          _ -> cppUNBOX (T.unpack . compileCpp $ foreignToBoxed ty) $ translateReg reg
+          _ -> mkILUNBOX (T.unpack . compileIL $ foreignToBoxed ty) $ translateReg reg
 
-      cType :: FType -> Cpp
-      cType (FArith (ATInt ITNative))       = CppIdent "int"
-      cType (FArith (ATInt ITChar))         = CppIdent "char"
-      cType (FArith (ATInt ITBig))          = CppIdent "long long"
-      cType (FArith (ATInt (ITFixed IT8)))  = CppIdent "int8_t"
-      cType (FArith (ATInt (ITFixed IT16))) = CppIdent "int16_t"
-      cType (FArith (ATInt (ITFixed IT32))) = CppIdent "int32_t"
-      cType (FArith (ATInt (ITFixed IT64))) = CppIdent "int64_t"
-      cType FString = CppIdent "string"
-      cType FUnit = CppIdent "void"
-      cType FPtr = CppIdent "void*"
-      cType FManagedPtr = CppIdent "shared_ptr<void>"
-      cType (FArith ATFloat) = CppIdent "double"
-      cType FAny = CppIdent "void*"
-      cType (FFunction a b) = CppList [cType a, cType b]
+      cType :: FType -> ILExpr
+      cType (FArith (ATInt ITNative))       = ILIdent "int"
+      cType (FArith (ATInt ITChar))         = ILIdent "char"
+      cType (FArith (ATInt ITBig))          = ILIdent "long long"
+      cType (FArith (ATInt (ITFixed IT8)))  = ILIdent "int8_t"
+      cType (FArith (ATInt (ITFixed IT16))) = ILIdent "int16_t"
+      cType (FArith (ATInt (ITFixed IT32))) = ILIdent "int32_t"
+      cType (FArith (ATInt (ITFixed IT64))) = ILIdent "int64_t"
+      cType FString = ILIdent "string"
+      cType FUnit = ILIdent "void"
+      cType FPtr = ILIdent "void*"
+      cType FManagedPtr = ILIdent "shared_ptr<void>"
+      cType (FArith ATFloat) = ILIdent "double"
+      cType FAny = ILIdent "void*"
+      cType (FFunction a b) = ILList [cType a, cType b]
 
-      foreignToBoxed :: FType -> Cpp
-      foreignToBoxed (FArith (ATInt ITNative))       = CppIdent cppINT
-      foreignToBoxed (FArith (ATInt ITChar))         = CppIdent cppCHAR
-      foreignToBoxed (FArith (ATInt ITBig))          = CppIdent cppBIGINT
-      foreignToBoxed (FArith (ATInt (ITFixed IT8)))  = CppIdent (cppWORD 8)
-      foreignToBoxed (FArith (ATInt (ITFixed IT16))) = CppIdent (cppWORD 16)
-      foreignToBoxed (FArith (ATInt (ITFixed IT32))) = CppIdent (cppWORD 32)
-      foreignToBoxed (FArith (ATInt (ITFixed IT64))) = CppIdent (cppWORD 64)
-      foreignToBoxed FString = CppIdent cppSTRING
-      -- foreignToBoxed FUnit = CppIdent "void"
-      foreignToBoxed FPtr = CppIdent cppPTR
-      foreignToBoxed FManagedPtr = CppIdent cppManagedPtr
-      foreignToBoxed (FArith ATFloat) = CppIdent cppFLOAT
-      foreignToBoxed FAny = CppIdent cppPTR
-      -- foreignToBoxed (FFunction a b) = CppList [cType a, cType b]
+      foreignToBoxed :: FType -> ILExpr
+      foreignToBoxed (FArith (ATInt ITNative))       = ILIdent mkILINT
+      foreignToBoxed (FArith (ATInt ITChar))         = ILIdent mkILCHAR
+      foreignToBoxed (FArith (ATInt ITBig))          = ILIdent mkILBIGINT
+      foreignToBoxed (FArith (ATInt (ITFixed IT8)))  = ILIdent (mkILWORD 8)
+      foreignToBoxed (FArith (ATInt (ITFixed IT16))) = ILIdent (mkILWORD 16)
+      foreignToBoxed (FArith (ATInt (ITFixed IT32))) = ILIdent (mkILWORD 32)
+      foreignToBoxed (FArith (ATInt (ITFixed IT64))) = ILIdent (mkILWORD 64)
+      foreignToBoxed FString = ILIdent mkILSTRING
+      -- foreignToBoxed FUnit = ILIdent "void"
+      foreignToBoxed FPtr = ILIdent mkILPTR
+      foreignToBoxed FManagedPtr = ILIdent mkILManagedPtr
+      foreignToBoxed (FArith ATFloat) = ILIdent mkILFLOAT
+      foreignToBoxed FAny = ILIdent mkILPTR
+      -- foreignToBoxed (FFunction a b) = ILList [cType a, cType b]
 
-cppREBASE :: CompileInfo -> Cpp
-cppREBASE _ = CppAssign cppSTACKBASE cppOLDBASE
+mkILREBASE :: CompileInfo -> ILExpr
+mkILREBASE _ = ILAssign mkILSTACKBASE mkILOLDBASE
 
-cppSTOREOLD :: CompileInfo ->Cpp
-cppSTOREOLD _ = CppAssign cppMYOLDBASE cppSTACKBASE
+mkILSTOREOLD :: CompileInfo ->ILExpr
+mkILSTOREOLD _ = ILAssign mkILMYOLDBASE mkILSTACKBASE
 
-cppADDTOP :: CompileInfo -> Int -> Cpp
-cppADDTOP info n = case n of
-                     0 -> CppNoop
-                     _ -> CppBinOp "+=" cppSTACKTOP (CppNum (CppInt n))
+mkILADDTOP :: CompileInfo -> Int -> ILExpr
+mkILADDTOP info n = case n of
+                     0 -> ILNoop
+                     _ -> ILBinOp "+=" mkILSTACKTOP (ILNum (ILInt n))
 
-cppTOPBASE :: CompileInfo -> Int -> Cpp
-cppTOPBASE _ 0  = CppAssign cppSTACKTOP cppSTACKBASE
-cppTOPBASE _ n  = CppAssign cppSTACKTOP (CppBinOp "+" cppSTACKBASE (CppNum (CppInt n)))
+mkILTOPBASE :: CompileInfo -> Int -> ILExpr
+mkILTOPBASE _ 0  = ILAssign mkILSTACKTOP mkILSTACKBASE
+mkILTOPBASE _ n  = ILAssign mkILSTACKTOP (ILBinOp "+" mkILSTACKBASE (ILNum (ILInt n)))
 
-cppBASETOP :: CompileInfo -> Int -> Cpp
-cppBASETOP _ 0 = CppAssign cppSTACKBASE cppSTACKTOP
-cppBASETOP _ n = CppAssign cppSTACKBASE (CppBinOp "+" cppSTACKTOP (CppNum (CppInt n)))
+mkILBASETOP :: CompileInfo -> Int -> ILExpr
+mkILBASETOP _ 0 = ILAssign mkILSTACKBASE mkILSTACKTOP
+mkILBASETOP _ n = ILAssign mkILSTACKBASE (ILBinOp "+" mkILSTACKTOP (ILNum (ILInt n)))
 
-cppNULL :: CompileInfo -> Reg -> Cpp
-cppNULL _ r = CppAssign (translateReg r) CppNull
+mkILNULL :: CompileInfo -> Reg -> ILExpr
+mkILNULL _ r = ILAssign (translateReg r) ILNull
 
-cppERROR :: CompileInfo -> String -> Cpp
-cppERROR _ = CppError
+mkILERROR :: CompileInfo -> String -> ILExpr
+mkILERROR _ = ILError
 
-cppSLIDE :: CompileInfo -> Int -> Cpp
-cppSLIDE _ n = CppApp (CppIdent "slide") [cppVM, CppNum (CppInt n)]
+mkILSLIDE :: CompileInfo -> Int -> ILExpr
+mkILSLIDE _ n = ILApp (ILIdent "slide") [mkILVM, ILNum (ILInt n)]
 
-cppRESERVE :: CompileInfo -> Int -> Cpp
-cppRESERVE _ n = cppCall "reserve" [cppVM, CppBinOp "+" cppSTACKTOP (CppNum $ CppInt n)]
+mkILRESERVE :: CompileInfo -> Int -> ILExpr
+mkILRESERVE _ n = mkILCall "reserve" [mkILVM, ILBinOp "+" mkILSTACKTOP (ILNum $ ILInt n)]
 
-cppMKCON :: CompileInfo -> Reg -> Int -> [Reg] -> Cpp
-cppMKCON info r t rs =
-  CppAssign (translateReg r) (
-    cppBOX cppCON $ CppList $ CppNum (CppInt t) : args rs
+mkILMKCON :: CompileInfo -> Reg -> Int -> [Reg] -> ILExpr
+mkILMKCON info r t rs =
+  ILAssign (translateReg r) (
+    mkILBOX mkILCON $ ILList $ ILNum (ILInt t) : args rs
   )
     where
       args [] = []
-      args xs = [CppList (map translateReg xs)]
+      args xs = [ILList (map translateReg xs)]
 
-cppCASE :: CompileInfo -> Bool -> Reg -> [(Int, [BC])] -> Maybe [BC] -> Cpp
-cppCASE info safe reg cases def =
-  CppSwitch (tag safe $ translateReg reg) (
-    map ((CppNum . CppInt) *** prepBranch) cases
+mkILCASE :: CompileInfo -> Bool -> Reg -> [(Int, [BC])] -> Maybe [BC] -> ILExpr
+mkILCASE info safe reg cases def =
+  ILSwitch (tag safe $ translateReg reg) (
+    map ((ILNum . ILInt) *** prepBranch) cases
   ) (fmap prepBranch def)
     where
-      tag :: Bool -> Cpp -> Cpp
-      tag True  = cppCTAG
-      tag False = cppTAG
+      tag :: Bool -> ILExpr -> ILExpr
+      tag True  = mkILCTAG
+      tag False = mkILTAG
 
-      prepBranch :: [BC] -> Cpp
-      prepBranch bc = CppSeq $ map (translateBC info) bc
+      prepBranch :: [BC] -> ILExpr
+      prepBranch bc = ILSeq $ map (translateBC info) bc
 
-      cppTAG cpp =
-        (CppTernary (cpp `cppInstanceOf` "Con::typeId") (
-          CppProj (cppUNBOX cppCON cpp) "tag"
-        ) (CppNum (CppInt $ negate 1)))
+      mkILTAG expr =
+        (ILTernary (expr `mkILInstanceOf` "Con::typeId") (
+          ILProj (mkILUNBOX mkILCON expr) "tag"
+        ) (ILNum (ILInt $ negate 1)))
 
-      cppCTAG :: Cpp -> Cpp
-      cppCTAG cpp = CppProj (cppUNBOX cppCON cpp) "tag"
+      mkILCTAG :: ILExpr -> ILExpr
+      mkILCTAG expr = ILProj (mkILUNBOX mkILCON expr) "tag"
 
-cppCONSTCASE :: CompileInfo -> Reg -> [(Const, [BC])] -> Maybe [BC] -> Cpp
-cppCONSTCASE info reg cases def =
-  CppCond $ (
-    map (unboxedBinOp (cppEq) (translateReg reg) . translateConstant *** prepBranch) cases
-  ) ++ (maybe [] ((:[]) . ((,) CppNoop) . prepBranch) def)
+mkILCONSTCASE :: CompileInfo -> Reg -> [(Const, [BC])] -> Maybe [BC] -> ILExpr
+mkILCONSTCASE info reg cases def =
+  ILCond $ (
+    map (unboxedBinOp (mkILEq) (translateReg reg) . translateConstant *** prepBranch) cases
+  ) ++ (maybe [] ((:[]) . ((,) ILNoop) . prepBranch) def)
     where
-      prepBranch :: [BC] -> Cpp
-      prepBranch bc = CppSeq $ map (translateBC info) bc
+      prepBranch :: [BC] -> ILExpr
+      prepBranch bc = ILSeq $ map (translateBC info) bc
 
-      unboxedBinOp :: (Cpp -> Cpp -> Cpp) -> Cpp -> Cpp -> Cpp
-      unboxedBinOp f l r = f (cppUNBOX (unboxedType r) l) r
+      unboxedBinOp :: (ILExpr -> ILExpr -> ILExpr) -> ILExpr -> ILExpr -> ILExpr
+      unboxedBinOp f l r = f (mkILUNBOX (unboxedType r) l) r
 
-cppPROJECT :: CompileInfo -> Reg -> Int -> Int -> Cpp
-cppPROJECT _ reg loc 0  = CppNoop
-cppPROJECT _ reg loc ar =
-  CppApp (CppIdent "project") [ cppVM
+mkILPROJECT :: CompileInfo -> Reg -> Int -> Int -> ILExpr
+mkILPROJECT _ reg loc 0  = ILNoop
+mkILPROJECT _ reg loc ar =
+  ILApp (ILIdent "project") [ mkILVM
                               , translateReg reg
-                              , CppNum (CppInt loc)
-                              , CppNum (CppInt ar)
+                              , ILNum (ILInt loc)
+                              , ILNum (ILInt ar)
                               ]
 
-cppOP :: CompileInfo -> Reg -> PrimFn -> [Reg] -> Cpp
-cppOP _ reg oper args = CppAssign (translateReg reg) (cppOP' oper)
+mkILOP :: CompileInfo -> Reg -> PrimFn -> [Reg] -> ILExpr
+mkILOP _ reg oper args = ILAssign (translateReg reg) (mkILOP' oper)
   where
-    cppOP' :: PrimFn -> Cpp
-    cppOP' op =
+    mkILOP' :: PrimFn -> ILExpr
+    mkILOP' op =
       case op of
         LNoOp -> translateReg (last args)
 
-        (LZExt sty dty) -> cppBOX (cppAType (ATInt dty)) $ cppUNBOX (cppAType (ATInt sty)) $ translateReg (last args)
+        (LZExt sty dty) -> mkILBOX (mkILAType (ATInt dty)) $ mkILUNBOX (mkILAType (ATInt sty)) $ translateReg (last args)
 
 
-        (LPlus ty) -> cppBOX (cppAType ty) $ CppBinOp "+" (cppUNBOX (cppAType ty) $ translateReg lhs)
-                                                          (cppUNBOX (cppAType ty) $ translateReg rhs)
+        (LPlus ty) -> mkILBOX (mkILAType ty) $ ILBinOp "+" (mkILUNBOX (mkILAType ty) $ translateReg lhs)
+                                                          (mkILUNBOX (mkILAType ty) $ translateReg rhs)
 
-        (LMinus ty) -> cppBOX (cppAType ty) $ CppBinOp "-" (cppUNBOX (cppAType ty) $ translateReg lhs)
-                                                           (cppUNBOX (cppAType ty) $ translateReg rhs)
+        (LMinus ty) -> mkILBOX (mkILAType ty) $ ILBinOp "-" (mkILUNBOX (mkILAType ty) $ translateReg lhs)
+                                                           (mkILUNBOX (mkILAType ty) $ translateReg rhs)
 
-        (LTimes ty) -> cppBOX (cppAType ty) $ CppBinOp "*" (cppUNBOX (cppAType ty) $ translateReg lhs)
-                                                           (cppUNBOX (cppAType ty) $ translateReg rhs)
+        (LTimes ty) -> mkILBOX (mkILAType ty) $ ILBinOp "*" (mkILUNBOX (mkILAType ty) $ translateReg lhs)
+                                                           (mkILUNBOX (mkILAType ty) $ translateReg rhs)
 
-        (LSDiv ty) -> cppBOX (cppAType ty) $ CppBinOp "/" (cppUNBOX (cppAType ty) $ translateReg lhs)
-                                                          (cppUNBOX (cppAType ty) $ translateReg rhs)
+        (LSDiv ty) -> mkILBOX (mkILAType ty) $ ILBinOp "/" (mkILUNBOX (mkILAType ty) $ translateReg lhs)
+                                                          (mkILUNBOX (mkILAType ty) $ translateReg rhs)
 
-        (LSRem ty) -> cppBOX (cppAType ty) $ CppBinOp "%" (cppUNBOX (cppAType ty) $ translateReg lhs)
-                                                          (cppUNBOX (cppAType ty) $ translateReg rhs)
+        (LSRem ty) -> mkILBOX (mkILAType ty) $ ILBinOp "%" (mkILUNBOX (mkILAType ty) $ translateReg lhs)
+                                                          (mkILUNBOX (mkILAType ty) $ translateReg rhs)
 
-        (LEq ty) -> cppBOX cppBOOL $ CppBinOp "==" (cppUNBOX (cppAType ty) $ translateReg lhs)
-                                                   (cppUNBOX (cppAType ty) $ translateReg rhs)
+        (LEq ty) -> mkILBOX mkILBOOL $ ILBinOp "==" (mkILUNBOX (mkILAType ty) $ translateReg lhs)
+                                                   (mkILUNBOX (mkILAType ty) $ translateReg rhs)
 
-        (LSLt ty) -> cppBOX cppBOOL $ CppBinOp "<"  (cppUNBOX (cppAType ty) $ translateReg lhs)
-                                                    (cppUNBOX (cppAType ty) $ translateReg rhs)
+        (LSLt ty) -> mkILBOX mkILBOOL $ ILBinOp "<"  (mkILUNBOX (mkILAType ty) $ translateReg lhs)
+                                                    (mkILUNBOX (mkILAType ty) $ translateReg rhs)
 
-        (LSLe ty) -> cppBOX cppBOOL $ CppBinOp "<=" (cppUNBOX (cppAType ty) $ translateReg lhs)
-                                                    (cppUNBOX (cppAType ty) $ translateReg rhs)
+        (LSLe ty) -> mkILBOX mkILBOOL $ ILBinOp "<=" (mkILUNBOX (mkILAType ty) $ translateReg lhs)
+                                                    (mkILUNBOX (mkILAType ty) $ translateReg rhs)
 
-        (LSGt ty) -> cppBOX cppBOOL $ CppBinOp ">"  (cppUNBOX (cppAType ty) $ translateReg lhs)
-                                                    (cppUNBOX (cppAType ty) $ translateReg rhs)
+        (LSGt ty) -> mkILBOX mkILBOOL $ ILBinOp ">"  (mkILUNBOX (mkILAType ty) $ translateReg lhs)
+                                                    (mkILUNBOX (mkILAType ty) $ translateReg rhs)
 
-        (LSGe ty) -> cppBOX cppBOOL $ CppBinOp ">=" (cppUNBOX (cppAType ty) $ translateReg lhs)
-                                                    (cppUNBOX (cppAType ty) $ translateReg rhs)
+        (LSGe ty) -> mkILBOX mkILBOOL $ ILBinOp ">=" (mkILUNBOX (mkILAType ty) $ translateReg lhs)
+                                                    (mkILUNBOX (mkILAType ty) $ translateReg rhs)
 
-        (LTrunc ITNative (ITFixed IT8)) -> cppBOX (cppWORD 8) $ CppBinOp "&" (cppUNBOX cppINT $ translateReg arg) (CppRaw "0xFFu")
+        (LTrunc ITNative (ITFixed IT8)) -> mkILBOX (mkILWORD 8) $ ILBinOp "&" (mkILUNBOX mkILINT $ translateReg arg) (ILRaw "0xFFu")
 
-        (LTrunc (ITFixed IT16) (ITFixed IT8)) -> cppBOX (cppWORD 8) $ CppBinOp "&" (cppUNBOX (cppWORD 16) $ translateReg arg) (CppRaw "0xFFu")
+        (LTrunc (ITFixed IT16) (ITFixed IT8)) -> mkILBOX (mkILWORD 8) $ ILBinOp "&" (mkILUNBOX (mkILWORD 16) $ translateReg arg) (ILRaw "0xFFu")
 
-        (LTrunc (ITFixed IT32) (ITFixed IT16)) -> cppBOX (cppWORD 16) $ CppBinOp "&" (cppUNBOX (cppWORD 32) $ translateReg arg) (CppRaw "0xFFFFu")
+        (LTrunc (ITFixed IT32) (ITFixed IT16)) -> mkILBOX (mkILWORD 16) $ ILBinOp "&" (mkILUNBOX (mkILWORD 32) $ translateReg arg) (ILRaw "0xFFFFu")
 
-        (LTrunc (ITFixed IT64) (ITFixed IT32)) -> cppBOX (cppWORD 32) $ CppBinOp "&" (cppUNBOX (cppWORD 64) $ translateReg arg) (CppRaw "0xFFFFFFFFu")
+        (LTrunc (ITFixed IT64) (ITFixed IT32)) -> mkILBOX (mkILWORD 32) $ ILBinOp "&" (mkILUNBOX (mkILWORD 64) $ translateReg arg) (ILRaw "0xFFFFFFFFu")
 
-        (LTrunc ITBig (ITFixed IT64)) -> cppBOX (cppWORD 64) $ CppBinOp "&" (cppUNBOX cppBIGINT $ translateReg arg) (CppRaw "0xFFFFFFFFFFFFFFFFu")
+        (LTrunc ITBig (ITFixed IT64)) -> mkILBOX (mkILWORD 64) $ ILBinOp "&" (mkILUNBOX mkILBIGINT $ translateReg arg) (ILRaw "0xFFFFFFFFFFFFFFFFu")
 
-        (LTrunc ITBig ITNative) -> cppBOX cppINT $ cppStaticCast (cppINT ++ "::type") (cppUNBOX cppBIGINT $ translateReg arg)
+        (LTrunc ITBig ITNative) -> mkILBOX mkILINT $ mkILStaticCast (mkILINT ++ "::type") (mkILUNBOX mkILBIGINT $ translateReg arg)
 
-        (LLSHR ty@(ITFixed _)) -> cppOP' (LASHR ty)
-        (LLt ty@(ITFixed _))   -> cppOP' (LSLt (ATInt ty))
-        (LLe ty@(ITFixed _))   -> cppOP' (LSLe (ATInt ty))
-        (LGt ty@(ITFixed _))   -> cppOP' (LSGt (ATInt ty))
-        (LGe ty@(ITFixed _))   -> cppOP' (LSGe (ATInt ty))
-        (LUDiv ty@(ITFixed _)) -> cppOP' (LSDiv (ATInt ty))
+        (LLSHR ty@(ITFixed _)) -> mkILOP' (LASHR ty)
+        (LLt ty@(ITFixed _))   -> mkILOP' (LSLt (ATInt ty))
+        (LLe ty@(ITFixed _))   -> mkILOP' (LSLe (ATInt ty))
+        (LGt ty@(ITFixed _))   -> mkILOP' (LSGt (ATInt ty))
+        (LGe ty@(ITFixed _))   -> mkILOP' (LSGe (ATInt ty))
+        (LUDiv ty@(ITFixed _)) -> mkILOP' (LSDiv (ATInt ty))
 
-        (LAnd ty) -> cppBOX (cppAType (ATInt ty)) $ CppBinOp "&" (cppUNBOX (cppAType (ATInt ty)) $ translateReg lhs)
-                                                                 (cppUNBOX (cppAType (ATInt ty)) $ translateReg rhs)
+        (LAnd ty) -> mkILBOX (mkILAType (ATInt ty)) $ ILBinOp "&" (mkILUNBOX (mkILAType (ATInt ty)) $ translateReg lhs)
+                                                                 (mkILUNBOX (mkILAType (ATInt ty)) $ translateReg rhs)
 
-        (LOr ty)   -> cppBOX (cppAType (ATInt ty)) $ CppBinOp " " (cppUNBOX (cppAType (ATInt ty)) $ translateReg lhs)
-                                                                  (cppUNBOX (cppAType (ATInt ty)) $ translateReg rhs)
+        (LOr ty)   -> mkILBOX (mkILAType (ATInt ty)) $ ILBinOp " " (mkILUNBOX (mkILAType (ATInt ty)) $ translateReg lhs)
+                                                                  (mkILUNBOX (mkILAType (ATInt ty)) $ translateReg rhs)
 
-        (LXOr ty)  -> cppBOX (cppAType (ATInt ty)) $ CppBinOp "^" (cppUNBOX (cppAType (ATInt ty)) $ translateReg lhs)
-                                                                  (cppUNBOX (cppAType (ATInt ty)) $ translateReg rhs)
+        (LXOr ty)  -> mkILBOX (mkILAType (ATInt ty)) $ ILBinOp "^" (mkILUNBOX (mkILAType (ATInt ty)) $ translateReg lhs)
+                                                                  (mkILUNBOX (mkILAType (ATInt ty)) $ translateReg rhs)
 
-        (LSHL ty)  -> cppBOX (cppAType (ATInt ty)) $ CppBinOp "<<" (cppUNBOX (cppAType (ATInt ty)) $ translateReg lhs)
-                                                                   (cppAsIntegral $ translateReg rhs)
+        (LSHL ty)  -> mkILBOX (mkILAType (ATInt ty)) $ ILBinOp "<<" (mkILUNBOX (mkILAType (ATInt ty)) $ translateReg lhs)
+                                                                   (mkILAsIntegral $ translateReg rhs)
 
-        (LASHR ty) -> cppBOX (cppAType (ATInt ty)) $ CppBinOp ">>" (cppUNBOX (cppAType (ATInt ty)) $ translateReg lhs)
-                                                                   (cppAsIntegral $ translateReg rhs)
+        (LASHR ty) -> mkILBOX (mkILAType (ATInt ty)) $ ILBinOp ">>" (mkILUNBOX (mkILAType (ATInt ty)) $ translateReg lhs)
+                                                                   (mkILAsIntegral $ translateReg rhs)
 
-        (LCompl ty) -> cppBOX (cppAType (ATInt ty)) $ CppPreOp "~" (cppUNBOX (cppAType (ATInt ty)) $ translateReg arg)
+        (LCompl ty) -> mkILBOX (mkILAType (ATInt ty)) $ ILPreOp "~" (mkILUNBOX (mkILAType (ATInt ty)) $ translateReg arg)
 
-        LStrConcat -> cppBOX cppSTRING $ CppBinOp "+" (cppUNBOX cppSTRING $ translateReg lhs)
-                                                      (cppUNBOX cppSTRING $ translateReg rhs)
+        LStrConcat -> mkILBOX mkILSTRING $ ILBinOp "+" (mkILUNBOX mkILSTRING $ translateReg lhs)
+                                                      (mkILUNBOX mkILSTRING $ translateReg rhs)
 
-        LStrEq -> cppBOX cppBOOL $ CppBinOp "==" (cppUNBOX cppSTRING $ translateReg lhs)
-                                                 (cppUNBOX cppSTRING $ translateReg rhs)
+        LStrEq -> mkILBOX mkILBOOL $ ILBinOp "==" (mkILUNBOX mkILSTRING $ translateReg lhs)
+                                                 (mkILUNBOX mkILSTRING $ translateReg rhs)
 
-        LStrLt -> cppBOX cppBOOL $ CppBinOp "<"  (cppUNBOX cppSTRING $ translateReg lhs)
-                                                 (cppUNBOX cppSTRING $ translateReg rhs)
+        LStrLt -> mkILBOX mkILBOOL $ ILBinOp "<"  (mkILUNBOX mkILSTRING $ translateReg lhs)
+                                                 (mkILUNBOX mkILSTRING $ translateReg rhs)
 
-        LStrLen -> cppBOX cppINT $ cppStaticCast (cppINT ++ "::type") (strLen (cppUNBOX cppSTRING $ translateReg arg)) -- TODO: int size 64?
+        LStrLen -> mkILBOX mkILINT $ mkILStaticCast (mkILINT ++ "::type") (strLen (mkILUNBOX mkILSTRING $ translateReg arg)) -- TODO: int size 64?
 
-        (LStrInt ITNative)     -> cppBOX cppINT $ cppCall "stoi" [cppUNBOX cppSTRING $ translateReg arg]
-        (LIntStr ITNative)     -> cppBOX cppSTRING $ cppAsString $ translateReg arg
-        (LSExt ITNative ITBig) -> cppBOX cppBIGINT $ cppUNBOX cppINT $ translateReg arg
-        (LIntStr ITBig)        -> cppBOX cppSTRING $ cppAsString $ translateReg arg
-        (LStrInt ITBig)        -> cppBOX cppBIGINT $ cppCall "stoll" [cppUNBOX cppSTRING $ translateReg arg]
-        LFloatStr              -> cppBOX cppSTRING $ cppAsString $ translateReg arg
-        LStrFloat              -> cppBOX cppFLOAT $ cppCall "stod" [cppUNBOX cppSTRING $ translateReg arg]
-        (LIntFloat ITNative)   ->  cppBOX cppFLOAT $ cppUNBOX cppINT $ translateReg arg
-        (LFloatInt ITNative)   -> cppBOX cppINT $ cppUNBOX cppFLOAT $ translateReg arg
-        (LChInt ITNative)      -> cppBOX cppINT $ cppUNBOX cppCHAR $ translateReg arg
-        (LIntCh ITNative)      -> cppBOX cppCHAR $ cppUNBOX cppINT $ translateReg arg
+        (LStrInt ITNative)     -> mkILBOX mkILINT $ mkILCall "stoi" [mkILUNBOX mkILSTRING $ translateReg arg]
+        (LIntStr ITNative)     -> mkILBOX mkILSTRING $ mkILAsString $ translateReg arg
+        (LSExt ITNative ITBig) -> mkILBOX mkILBIGINT $ mkILUNBOX mkILINT $ translateReg arg
+        (LIntStr ITBig)        -> mkILBOX mkILSTRING $ mkILAsString $ translateReg arg
+        (LStrInt ITBig)        -> mkILBOX mkILBIGINT $ mkILCall "stoll" [mkILUNBOX mkILSTRING $ translateReg arg]
+        LFloatStr              -> mkILBOX mkILSTRING $ mkILAsString $ translateReg arg
+        LStrFloat              -> mkILBOX mkILFLOAT $ mkILCall "stod" [mkILUNBOX mkILSTRING $ translateReg arg]
+        (LIntFloat ITNative)   ->  mkILBOX mkILFLOAT $ mkILUNBOX mkILINT $ translateReg arg
+        (LFloatInt ITNative)   -> mkILBOX mkILINT $ mkILUNBOX mkILFLOAT $ translateReg arg
+        (LChInt ITNative)      -> mkILBOX mkILINT $ mkILUNBOX mkILCHAR $ translateReg arg
+        (LIntCh ITNative)      -> mkILBOX mkILCHAR $ mkILUNBOX mkILINT $ translateReg arg
 
-        LFExp   -> cppBOX cppFLOAT $ cppCall "exp" [cppUNBOX cppFLOAT $ translateReg arg]
-        LFLog   -> cppBOX cppFLOAT $ cppCall "log" [cppUNBOX cppFLOAT $ translateReg arg]
-        LFSin   -> cppBOX cppFLOAT $ cppCall "sin" [cppUNBOX cppFLOAT $ translateReg arg]
-        LFCos   -> cppBOX cppFLOAT $ cppCall "cos" [cppUNBOX cppFLOAT $ translateReg arg]
-        LFTan   -> cppBOX cppFLOAT $ cppCall "tan" [cppUNBOX cppFLOAT $ translateReg arg]
-        LFASin  -> cppBOX cppFLOAT $ cppCall "asin" [cppUNBOX cppFLOAT $ translateReg arg]
-        LFACos  -> cppBOX cppFLOAT $ cppCall "acos" [cppUNBOX cppFLOAT $ translateReg arg]
-        LFATan  -> cppBOX cppFLOAT $ cppCall "atan" [cppUNBOX cppFLOAT $ translateReg arg]
-        LFSqrt  -> cppBOX cppFLOAT $ cppCall "sqrt" [cppUNBOX cppFLOAT $ translateReg arg]
-        LFFloor -> cppBOX cppFLOAT $ cppCall "floor" [cppUNBOX cppFLOAT $ translateReg arg]
-        LFCeil  -> cppBOX cppFLOAT $ cppCall "ceil" [cppUNBOX cppFLOAT $ translateReg arg]
+        LFExp   -> mkILBOX mkILFLOAT $ mkILCall "exp" [mkILUNBOX mkILFLOAT $ translateReg arg]
+        LFLog   -> mkILBOX mkILFLOAT $ mkILCall "log" [mkILUNBOX mkILFLOAT $ translateReg arg]
+        LFSin   -> mkILBOX mkILFLOAT $ mkILCall "sin" [mkILUNBOX mkILFLOAT $ translateReg arg]
+        LFCos   -> mkILBOX mkILFLOAT $ mkILCall "cos" [mkILUNBOX mkILFLOAT $ translateReg arg]
+        LFTan   -> mkILBOX mkILFLOAT $ mkILCall "tan" [mkILUNBOX mkILFLOAT $ translateReg arg]
+        LFASin  -> mkILBOX mkILFLOAT $ mkILCall "asin" [mkILUNBOX mkILFLOAT $ translateReg arg]
+        LFACos  -> mkILBOX mkILFLOAT $ mkILCall "acos" [mkILUNBOX mkILFLOAT $ translateReg arg]
+        LFATan  -> mkILBOX mkILFLOAT $ mkILCall "atan" [mkILUNBOX mkILFLOAT $ translateReg arg]
+        LFSqrt  -> mkILBOX mkILFLOAT $ mkILCall "sqrt" [mkILUNBOX mkILFLOAT $ translateReg arg]
+        LFFloor -> mkILBOX mkILFLOAT $ mkILCall "floor" [mkILUNBOX mkILFLOAT $ translateReg arg]
+        LFCeil  -> mkILBOX mkILFLOAT $ mkILCall "ceil" [mkILUNBOX mkILFLOAT $ translateReg arg]
 
-        LStrCons -> cppBOX cppSTRING $ CppBinOp "+" (cppAsString $ translateReg lhs)
-                                                              (cppUNBOX cppSTRING $ translateReg rhs)
-        LStrHead -> let str = cppUNBOX cppSTRING $ translateReg arg in
-                      CppTernary (cppAnd (translateReg arg) (CppPreOp "!" (cppMeth str "empty" [])))
-                                 (cppBOX cppCHAR $ cppCall "utf8_head" [str])
-                                 CppNull
+        LStrCons -> mkILBOX mkILSTRING $ ILBinOp "+" (mkILAsString $ translateReg lhs)
+                                                              (mkILUNBOX mkILSTRING $ translateReg rhs)
+        LStrHead -> let str = mkILUNBOX mkILSTRING $ translateReg arg in
+                      ILTernary (mkILAnd (translateReg arg) (ILPreOp "!" (mkILMeth str "empty" [])))
+                                 (mkILBOX mkILCHAR $ mkILCall "utf8_head" [str])
+                                 ILNull
 
-        LStrRev     -> cppBOX cppSTRING $ cppCall "reverse" [cppUNBOX cppSTRING $ translateReg arg]
+        LStrRev     -> mkILBOX mkILSTRING $ mkILCall "reverse" [mkILUNBOX mkILSTRING $ translateReg arg]
 
-        LStrIndex   -> cppBOX cppCHAR $ cppCall "char32_from_utf8_string" [cppUNBOX cppSTRING $ translateReg lhs,
-                                                                                cppAsIntegral $ translateReg rhs]
-        LStrTail    -> let str = cppUNBOX cppSTRING $ translateReg arg in
-                         CppTernary (cppAnd (translateReg arg) (cppGreaterThan (strLen str) cppOne))
-                                    (cppBOX cppSTRING $ cppCall "utf8_tail" [str])
-                                    (cppBOX cppSTRING $ CppString "")
+        LStrIndex   -> mkILBOX mkILCHAR $ mkILCall "char32_from_utf8_string" [mkILUNBOX mkILSTRING $ translateReg lhs,
+                                                                                mkILAsIntegral $ translateReg rhs]
+        LStrTail    -> let str = mkILUNBOX mkILSTRING $ translateReg arg in
+                         ILTernary (mkILAnd (translateReg arg) (mkILGreaterThan (strLen str) mkILOne))
+                                    (mkILBOX mkILSTRING $ mkILCall "utf8_tail" [str])
+                                    (mkILBOX mkILSTRING $ ILString "")
 
-        LReadStr    -> cppBOX cppSTRING $ cppCall "freadStr" [cppUNBOX cppManagedPtr $ translateReg arg]
+        LReadStr    -> mkILBOX mkILSTRING $ mkILCall "freadStr" [mkILUNBOX mkILManagedPtr $ translateReg arg]
 
-        LSystemInfo -> cppBOX cppSTRING $ cppCall "systemInfo"  [translateReg arg]
+        LSystemInfo -> mkILBOX mkILSTRING $ mkILCall "systemInfo"  [translateReg arg]
 
-        LNullPtr    -> CppNull
+        LNullPtr    -> ILNull
 
-        _ -> CppError $ "Not implemented: " ++ show op
+        _ -> ILError $ "Not implemented: " ++ show op
 
         where
           (lhs:rhs:_) = args
           (arg:_) = args
-          invokeMeth :: Reg -> String -> [Reg] -> Cpp
+          invokeMeth :: Reg -> String -> [Reg] -> ILExpr
           invokeMeth obj meth args =
-            CppApp (CppProj (translateReg obj) meth) $ map translateReg args
+            ILApp (ILProj (translateReg obj) meth) $ map translateReg args
 
-          strLen :: Cpp -> Cpp
-          strLen s = cppMeth s "length" []
+          strLen :: ILExpr -> ILExpr
+          strLen s = mkILMeth s "length" []
 
-cppSTACK :: Cpp
-cppSTACK = CppIdent "vm->valstack"
+mkILSTACK :: ILExpr
+mkILSTACK = ILIdent "vm->valstack"
 
-cppCALLSTACK :: Cpp
-cppCALLSTACK = CppIdent "vm->callstack"
+mkILCALLSTACK :: ILExpr
+mkILCALLSTACK = ILIdent "vm->callstack"
 
-cppARGSTACK :: Cpp
-cppARGSTACK = CppIdent "vm->argstack"
+mkILARGSTACK :: ILExpr
+mkILARGSTACK = ILIdent "vm->argstack"
 
-cppSTACKBASE :: Cpp
-cppSTACKBASE = CppIdent "vm->valstack_base"
+mkILSTACKBASE :: ILExpr
+mkILSTACKBASE = ILIdent "vm->valstack_base"
 
-cppSTACKTOP :: Cpp
-cppSTACKTOP = CppIdent "vm->valstack_top"
+mkILSTACKTOP :: ILExpr
+mkILSTACKTOP = ILIdent "vm->valstack_top"
 
-cppBASETYPENAME :: String
-cppBASETYPENAME = "IndexType"
+mkILBASETYPENAME :: String
+mkILBASETYPENAME = "IndexType"
 
-cppOLDBASENAME :: String
-cppOLDBASENAME = "oldbase"
+mkILOLDBASENAME :: String
+mkILOLDBASENAME = "oldbase"
 
-cppOLDBASE :: Cpp
-cppOLDBASE = CppIdent cppOLDBASENAME
+mkILOLDBASE :: ILExpr
+mkILOLDBASE = ILIdent mkILOLDBASENAME
 
-cppMYOLDBASENAME :: String
-cppMYOLDBASENAME = "myoldbase"
+mkILMYOLDBASENAME :: String
+mkILMYOLDBASENAME = "myoldbase"
 
-cppMYOLDBASE :: Cpp
-cppMYOLDBASE = CppIdent cppMYOLDBASENAME
+mkILMYOLDBASE :: ILExpr
+mkILMYOLDBASE = ILIdent mkILMYOLDBASENAME
 
-cppVM :: Cpp
-cppVM = CppIdent "vm"
+mkILVM :: ILExpr
+mkILVM = ILIdent "vm"
 
-cppFUNCPARMS :: [String]
-cppFUNCPARMS = ["shared_ptr<VirtualMachine>& vm", cppBASETYPENAME ++ " " ++ cppOLDBASENAME]
+mkILFUNCPARMS :: [String]
+mkILFUNCPARMS = ["shared_ptr<VirtualMachine>& vm", mkILBASETYPENAME ++ " " ++ mkILOLDBASENAME]
 
-cppRET :: Cpp
-cppRET = CppIdent "vm->ret"
+mkILRET :: ILExpr
+mkILRET = ILIdent "vm->ret"
 
-cppLOC :: Int -> Cpp
-cppLOC 0 = CppIndex cppSTACK cppSTACKBASE
-cppLOC n = CppIndex cppSTACK (CppBinOp "+" cppSTACKBASE (CppNum (CppInt n)))
+mkILLOC :: Int -> ILExpr
+mkILLOC 0 = ILIndex mkILSTACK mkILSTACKBASE
+mkILLOC n = ILIndex mkILSTACK (ILBinOp "+" mkILSTACKBASE (ILNum (ILInt n)))
 
-cppTOP :: Int -> Cpp
-cppTOP 0 = CppIndex cppSTACK cppSTACKTOP
-cppTOP n = CppIndex cppSTACK (CppBinOp "+" cppSTACKTOP (CppNum (CppInt n)))
+mkILTOP :: Int -> ILExpr
+mkILTOP 0 = ILIndex mkILSTACK mkILSTACKTOP
+mkILTOP n = ILIndex mkILSTACK (ILBinOp "+" mkILSTACKTOP (ILNum (ILInt n)))
 
-cppPUSH :: [Cpp] -> Cpp
-cppPUSH args = CppApp (CppProj cppCALLSTACK "push") args
+mkILPUSH :: [ILExpr] -> ILExpr
+mkILPUSH args = ILApp (ILProj mkILCALLSTACK "push") args
 
-cppPUSHARG :: [Cpp] -> Cpp
-cppPUSHARG args = CppApp (CppProj cppARGSTACK "push") args
+mkILPUSHARG :: [ILExpr] -> ILExpr
+mkILPUSHARG args = ILApp (ILProj mkILARGSTACK "push") args
 
-cppPOP :: Cpp
-cppPOP = CppBinOp ";" (cppMeth cppCALLSTACK "top" []) (cppMeth cppCALLSTACK "pop" [])
+mkILPOP :: ILExpr
+mkILPOP = ILBinOp ";" (mkILMeth mkILCALLSTACK "top" []) (mkILMeth mkILCALLSTACK "pop" [])
 
-cppPOPARGS :: Cpp
-cppPOPARGS = CppBinOp ";" (cppMeth cppARGSTACK "top" []) (cppMeth cppARGSTACK "pop" [])
+mkILPOPARGS :: ILExpr
+mkILPOPARGS = ILBinOp ";" (mkILMeth mkILARGSTACK "top" []) (mkILMeth mkILARGSTACK "pop" [])
 
-cppBOX' :: Cpp -> Cpp
-cppBOX' obj = cppBOX (unboxedType obj) obj
+mkILBOX' :: ILExpr -> ILExpr
+mkILBOX' obj = mkILBOX (unboxedType obj) obj
 
-cppUNBOX :: String -> Cpp -> Cpp
-cppUNBOX typ obj = CppApp (CppIdent $ "unbox" ++ "<" ++ typ ++ ">") [obj]
+mkILUNBOX :: String -> ILExpr -> ILExpr
+mkILUNBOX typ obj = ILApp (ILIdent $ "unbox" ++ "<" ++ typ ++ ">") [obj]
 
-unboxedType :: Cpp -> String
+unboxedType :: ILExpr -> String
 unboxedType e = case e of
-                  (CppString _)                       -> cppSTRING
-                  (CppNum (CppFloat _))               -> cppFLOAT
-                  (CppNum (CppInteger (CppBigInt _))) -> cppBIGINT
-                  (CppNum _)                          -> cppINT
-                  (CppChar _)                         -> cppCHAR
-                  (CppWord (CppWord8 _))              -> cppWORD 8
-                  (CppWord (CppWord16 _))             -> cppWORD 16
-                  (CppWord (CppWord32 _))             -> cppWORD 32
-                  (CppWord (CppWord64 _))             -> cppWORD 64
+                  (ILString _)                       -> mkILSTRING
+                  (ILNum (ILFloat _))               -> mkILFLOAT
+                  (ILNum (ILInteger (ILBigInt _))) -> mkILBIGINT
+                  (ILNum _)                          -> mkILINT
+                  (ILChar _)                         -> mkILCHAR
+                  (ILWord (ILWord8 _))              -> mkILWORD 8
+                  (ILWord (ILWord16 _))             -> mkILWORD 16
+                  (ILWord (ILWord32 _))             -> mkILWORD 32
+                  (ILWord (ILWord64 _))             -> mkILWORD 64
                   _                                   -> ""
 
-cppBOX :: String -> Cpp -> Cpp
-cppBOX typ obj = case typ of
-                       "" -> cppCall "box" [obj]
-                       _  -> cppCall ("box" ++ "<" ++ typ ++ ">") [obj]
+mkILBOX :: String -> ILExpr -> ILExpr
+mkILBOX typ obj = case typ of
+                       "" -> mkILCall "box" [obj]
+                       _  -> mkILCall ("box" ++ "<" ++ typ ++ ">") [obj]
 
-cppAsString :: Cpp -> Cpp
-cppAsString obj = cppPtrMeth obj "asString" []
+mkILAsString :: ILExpr -> ILExpr
+mkILAsString obj = mkILPtrMeth obj "asString" []
 
-cppAsIntegral :: Cpp -> Cpp
-cppAsIntegral obj = cppPtrMeth obj "asIntegral" []
+mkILAsIntegral :: ILExpr -> ILExpr
+mkILAsIntegral obj = mkILPtrMeth obj "asIntegral" []
 
-cppINT :: String
-cppINT = "Int"
+mkILINT :: String
+mkILINT = "Int"
 
-cppBIGINT :: String
-cppBIGINT = "BigInt"
+mkILBIGINT :: String
+mkILBIGINT = "BigInt"
 
-cppFLOAT :: String
-cppFLOAT = "Float"
+mkILFLOAT :: String
+mkILFLOAT = "Float"
 
-cppSTRING :: String
-cppSTRING = "String"
+mkILSTRING :: String
+mkILSTRING = "String"
 
-cppCHAR :: String
-cppCHAR = "Char"
+mkILCHAR :: String
+mkILCHAR = "Char"
 
-cppWORD :: Int -> String
-cppWORD n = PF.printf "Word%d" n
+mkILWORD :: Int -> String
+mkILWORD n = PF.printf "Word%d" n
 
-cppManagedPtr :: String
-cppManagedPtr = "ManagedPtr"
+mkILManagedPtr :: String
+mkILManagedPtr = "ManagedPtr"
 
-cppPTR :: String
-cppPTR = "Ptr"
+mkILPTR :: String
+mkILPTR = "Ptr"
 
-cppCON :: String
-cppCON = "Con"
+mkILCON :: String
+mkILCON = "Con"
 
-cppBOOL :: String
-cppBOOL = cppINT
+mkILBOOL :: String
+mkILBOOL = mkILINT
 
-cppAType :: ArithTy -> String
-cppAType (ATInt ITNative)       = cppINT
-cppAType (ATInt ITBig)          = cppBIGINT
-cppAType (ATInt ITChar)         = cppCHAR
-cppAType (ATFloat)              = cppFLOAT
-cppAType (ATInt (ITFixed IT8))  = cppWORD 8
-cppAType (ATInt (ITFixed IT16)) = cppWORD 16
-cppAType (ATInt (ITFixed IT32)) = cppWORD 32
-cppAType (ATInt (ITFixed IT64)) = cppWORD 64
-cppAType (ty)                   = "UNKNOWN TYPE: " ++ show ty
+mkILAType :: ArithTy -> String
+mkILAType (ATInt ITNative)       = mkILINT
+mkILAType (ATInt ITBig)          = mkILBIGINT
+mkILAType (ATInt ITChar)         = mkILCHAR
+mkILAType (ATFloat)              = mkILFLOAT
+mkILAType (ATInt (ITFixed IT8))  = mkILWORD 8
+mkILAType (ATInt (ITFixed IT16)) = mkILWORD 16
+mkILAType (ATInt (ITFixed IT32)) = mkILWORD 32
+mkILAType (ATInt (ITFixed IT64)) = mkILWORD 64
+mkILAType (ty)                   = "UNKNOWN TYPE: " ++ show ty
 
-cppCodepoint :: Int -> String
-cppCodepoint c = PF.printf "\\U%.8X" c
+mkILCodepoint :: Int -> String
+mkILCodepoint c = PF.printf "\\U%.8X" c
 
-translateBC :: CompileInfo -> BC -> Cpp
+translateBC :: CompileInfo -> BC -> ILExpr
 translateBC info bc =
   case bc of
-    ASSIGN r1 r2          ->  cppASSIGN info r1 r2
-    ASSIGNCONST r c       ->  cppASSIGNCONST info r c
-    UPDATE r1 r2          ->  cppASSIGN info r1 r2
-    ADDTOP n              ->  cppADDTOP info n
-    NULL r                ->  cppNULL info r
-    CALL n                ->  cppCALL info n
-    TAILCALL n            ->  cppTAILCALL info n
-    FOREIGNCALL r _ t n a ->  cppFOREIGN info r n a t
-    TOPBASE n             ->  cppTOPBASE info n
-    BASETOP n             ->  cppBASETOP info n
-    STOREOLD              ->  cppSTOREOLD info
-    SLIDE n               ->  cppSLIDE info n
-    REBASE                ->  cppREBASE info
-    RESERVE n             ->  cppRESERVE info n
-    MKCON r _ t rs        ->  cppMKCON info r t rs
-    CASE s r c d          ->  cppCASE info s r c d
-    CONSTCASE r c d       ->  cppCONSTCASE info r c d
-    PROJECT r l a         ->  cppPROJECT info r l a
-    OP r o a              ->  cppOP info r o a
-    ERROR e               ->  cppERROR info e
-    _                     ->  CppRaw $ "//" ++ show bc
+    ASSIGN r1 r2          ->  mkILASSIGN info r1 r2
+    ASSIGNCONST r c       ->  mkILASSIGNCONST info r c
+    UPDATE r1 r2          ->  mkILASSIGN info r1 r2
+    ADDTOP n              ->  mkILADDTOP info n
+    NULL r                ->  mkILNULL info r
+    CALL n                ->  mkILCALL info n
+    TAILCALL n            ->  mkILTAILCALL info n
+    FOREIGNCALL r _ t n a ->  mkILFOREIGN info r n a t
+    TOPBASE n             ->  mkILTOPBASE info n
+    BASETOP n             ->  mkILBASETOP info n
+    STOREOLD              ->  mkILSTOREOLD info
+    SLIDE n               ->  mkILSLIDE info n
+    REBASE                ->  mkILREBASE info
+    RESERVE n             ->  mkILRESERVE info n
+    MKCON r _ t rs        ->  mkILMKCON info r t rs
+    CASE s r c d          ->  mkILCASE info s r c d
+    CONSTCASE r c d       ->  mkILCONSTCASE info r c d
+    PROJECT r l a         ->  mkILPROJECT info r l a
+    OP r o a              ->  mkILOP info r o a
+    ERROR e               ->  mkILERROR info e
+    _                     ->  ILRaw $ "//" ++ show bc

@@ -24,7 +24,7 @@ Executable idris-cpp
                 , vector
 
   other-modules: IRTS.CodegenCpp
-               , IRTS.Cpp.AST
+               , IRTS.IL.AST
 
   if os(linux)
      cpp-options:   -DLINUX
