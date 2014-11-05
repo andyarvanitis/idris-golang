@@ -25,7 +25,8 @@ template <char N, typename T>
 struct TypedBoxedValue : public BoxedValue {
   
   using type = T;
-  
+
+  static const auto typeId = N;
   char getTypeId() const { return N; }
   
   T value;

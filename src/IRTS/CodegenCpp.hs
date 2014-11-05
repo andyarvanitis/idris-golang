@@ -330,7 +330,7 @@ cppCASE info safe reg cases def =
       prepBranch bc = CppSeq $ map (translateBC info) bc
 
       cppTAG cpp =
-        (CppTernary (cpp `cppInstanceOf` "C") (
+        (CppTernary (cpp `cppInstanceOf` "Con::typeId") (
           CppProj (cppUNBOX cppCON cpp) "tag"
         ) (CppNum (CppInt $ negate 1)))
 

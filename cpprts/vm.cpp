@@ -15,7 +15,7 @@ void slide(shared_ptr<VirtualMachine>& vm,
 
 void project(shared_ptr<VirtualMachine>& vm,
              const Value& value, const IndexType loc, const int arity) {
-  assert(value and value->getTypeId() == 'C');
+  assert(value and value->getTypeId() == Con::typeId);
   auto & args = unbox<Con>(value).args;
   for (auto i = 0; i < arity; i++) {
     vm->valstack[vm->valstack_base + i + loc] = args[i];

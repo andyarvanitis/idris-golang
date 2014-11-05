@@ -367,7 +367,7 @@ compileCpp' indent (CppWord word)
       fromBigInt n = CppNum . CppInteger . CppBigInt $ fromIntegral n
 
 cppInstanceOf :: Cpp -> String -> Cpp
-cppInstanceOf obj cls = cppAnd obj (cppEq (cppPtrMeth obj "getTypeId" []) (CppChar cls))
+cppInstanceOf obj cls = cppAnd obj (cppEq (cppPtrMeth obj "getTypeId" []) (CppIdent cls))
 
 cppOr :: Cpp -> Cpp -> Cpp
 cppOr lhs rhs = CppBinOp "||" lhs rhs

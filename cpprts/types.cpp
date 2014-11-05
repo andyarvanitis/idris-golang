@@ -221,27 +221,17 @@ long long int TypedBoxedValue<'C', Constructor>::asIntegral() const {
 
 Constructor::~Constructor() {
   // Unroll recursive Constructor destructions to prevent blowing the stack
-  Args _args_;
-  _args_.swap(args); // ownership taken by _args_ local container
-
   vector<Value> cons;
   size_t offset = 0;
-  bool done = false;
 
-  while (not done) {
-    for (auto & arg : _args_) {
-      if (arg and arg->getTypeId() == 'C' and arg.unique()) {
+  auto argsPtr = &args;
+  while (argsPtr) {
+    for (auto & arg : *argsPtr) {
+      if (arg and arg->getTypeId() == Con::typeId and arg.unique()) {
         cons.push_back(move(arg));
       }
     }
-    _args_.clear();
-
-    if (offset < cons.size()) {
-      _args_.swap(unbox<Con>(cons[offset]).args);
-      cons[offset++].reset();
-    } else {
-      done = true;
-    }
+    argsPtr = offset < cons.size() ? &unbox<Con>(cons[offset++]).args : nullptr;
   }
 }
 

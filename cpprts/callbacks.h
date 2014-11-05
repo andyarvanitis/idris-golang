@@ -16,7 +16,7 @@ void process_args(shared_ptr<VirtualMachine>& vm, Value& res, A arg, ArgTypes&&.
 
   void _idris__123_APPLY0_125_(shared_ptr<VirtualMachine>&, IndexType);
 
-  if (res->getTypeId() == 'C') {
+  if (res->getTypeId() == Con::typeId) {
     reserve(vm, vm->valstack_top + 2);
     vm->valstack[vm->valstack_top] = res;
     vm->valstack[vm->valstack_top + 1] = box<typename FromNative<A>::type>(arg);
