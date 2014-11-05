@@ -366,6 +366,7 @@ compileIL' indent (ILWord word)
       fromInt n = ILNum $ ILInt (fromIntegral n)
       fromBigInt n = ILNum . ILInteger . ILBigInt $ fromIntegral n
 
+-- TODO: move
 mkILInstanceOf :: ILExpr -> String -> ILExpr
 mkILInstanceOf obj cls = mkILAnd obj (mkILEq (mkILPtrMeth obj "getTypeId" []) (ILIdent cls))
 
@@ -390,8 +391,17 @@ mkILEq lhs rhs = ILBinOp "==" lhs rhs
 mkILNotEq :: ILExpr -> ILExpr -> ILExpr
 mkILNotEq lhs rhs = ILBinOp "!=" lhs rhs
 
+mkILLessThan :: ILExpr -> ILExpr -> ILExpr
+mkILLessThan lhs rhs = ILBinOp "<" lhs rhs
+
+mkILLessThanEq :: ILExpr -> ILExpr -> ILExpr
+mkILLessThanEq lhs rhs = ILBinOp "<=" lhs rhs
+
 mkILGreaterThan :: ILExpr -> ILExpr -> ILExpr
 mkILGreaterThan lhs rhs = ILBinOp ">" lhs rhs
+
+mkILGreaterThanEq :: ILExpr -> ILExpr -> ILExpr
+mkILGreaterThanEq lhs rhs = ILBinOp ">=" lhs rhs
 
 mkILZero :: ILExpr
 mkILZero = ILNum (ILInt 0)
@@ -405,5 +415,21 @@ mkILIsNull expr = ILBinOp "==" expr ILNull
 mkILIsNotNull :: ILExpr -> ILExpr
 mkILIsNotNull expr = ILBinOp "!=" expr ILNull
 
+mkILAdd :: ILExpr -> ILExpr -> ILExpr
+mkILAdd lhs rhs = ILBinOp "+" lhs rhs
+
+mkILSubtract :: ILExpr -> ILExpr -> ILExpr
+mkILSubtract lhs rhs = ILBinOp "-" lhs rhs
+
+mkILMultiply :: ILExpr -> ILExpr -> ILExpr
+mkILMultiply lhs rhs = ILBinOp "*" lhs rhs
+
+mkILDivide :: ILExpr -> ILExpr -> ILExpr
+mkILDivide lhs rhs = ILBinOp "/" lhs rhs
+
+mkILModulo :: ILExpr -> ILExpr -> ILExpr
+mkILModulo lhs rhs = ILBinOp "%" lhs rhs
+
+-- TODO: move
 mkILStaticCast :: String -> ILExpr -> ILExpr
 mkILStaticCast typ expr = mkILCall ("static_cast" ++ "<" ++ typ ++ ">") [expr]

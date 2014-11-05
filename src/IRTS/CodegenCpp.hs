@@ -9,6 +9,7 @@ import IRTS.Simplified
 import IRTS.System hiding (getDataDir)
 import IRTS.CodegenCommon
 import IRTS.IL.AST
+import IRTS.CodegenIL
 import Idris.Core.TT
 import Util.System
 
@@ -153,37 +154,6 @@ translateReg reg =
     Tmp  -> ILRaw "//TMPREG"
     L n  -> mkILLOC n
     T n  -> mkILTOP n
-
-translateConstant :: Const -> ILExpr
-translateConstant (I i)                    = ILNum (ILInt i)
-translateConstant (Fl f)                   = ILNum (ILFloat f)
-translateConstant (Ch c)                   = ILChar (translateChar c)
-translateConstant (Str s)                  = ILString $ concatMap translateChar s
-translateConstant (AType (ATInt ITNative)) = ILType ILIntTy
-translateConstant StrType                  = ILType ILStringTy
-translateConstant (AType (ATInt ITBig))    = ILType ILIntegerTy
-translateConstant (AType ATFloat)          = ILType ILFloatTy
-translateConstant (AType (ATInt ITChar))   = ILType ILCharTy
-translateConstant PtrType                  = ILType ILPtrTy
-translateConstant Forgot                   = ILType ILForgotTy
-translateConstant (BI i)                   = ILNum $ ILInteger (ILBigInt i)
-translateConstant (B8 b)                   = ILWord (ILWord8 b)
-translateConstant (B16 b)                  = ILWord (ILWord16 b)
-translateConstant (B32 b)                  = ILWord (ILWord32 b)
-translateConstant (B64 b)                  = ILWord (ILWord64 b)
-translateConstant c =
-  ILError $ "Unimplemented Constant: " ++ show c
-
-translateChar :: Char -> String
-translateChar ch
-  | isAscii ch && isAlphaNum ch  = [ch]
-  | ch `elem` [' ','_', ',','.'] = [ch]
-  | otherwise                    = mkILCodepoint (ord ch)
-
-translateName :: Name -> String
-translateName n = "_idris_" ++ concatMap cchar (showCG n)
-  where cchar x | isAlphaNum x = [x]
-                | otherwise    = "_" ++ show (fromEnum x) ++ "_"
 
 mkILASSIGN :: CompileInfo -> Reg -> Reg -> ILExpr
 mkILASSIGN _ r1 r2 = ILAssign (translateReg r1) (translateReg r2)
@@ -369,8 +339,8 @@ mkILOP _ reg oper args = ILAssign (translateReg reg) (mkILOP' oper)
         (LZExt sty dty) -> mkILBOX (mkILAType (ATInt dty)) $ mkILUNBOX (mkILAType (ATInt sty)) $ translateReg (last args)
 
 
-        (LPlus ty) -> mkILBOX (mkILAType ty) $ ILBinOp "+" (mkILUNBOX (mkILAType ty) $ translateReg lhs)
-                                                          (mkILUNBOX (mkILAType ty) $ translateReg rhs)
+        (LPlus ty) -> mkILBOX (mkILAType ty) $ mkILAdd (mkILUNBOX (mkILAType ty) $ translateReg lhs)
+                                                       (mkILUNBOX (mkILAType ty) $ translateReg rhs)
 
         (LMinus ty) -> mkILBOX (mkILAType ty) $ ILBinOp "-" (mkILUNBOX (mkILAType ty) $ translateReg lhs)
                                                            (mkILUNBOX (mkILAType ty) $ translateReg rhs)
@@ -634,30 +604,3 @@ mkILAType (ATInt (ITFixed IT32)) = mkILWORD 32
 mkILAType (ATInt (ITFixed IT64)) = mkILWORD 64
 mkILAType (ty)                   = "UNKNOWN TYPE: " ++ show ty
 
-mkILCodepoint :: Int -> String
-mkILCodepoint c = PF.printf "\\U%.8X" c
-
-translateBC :: CompileInfo -> BC -> ILExpr
-translateBC info bc =
-  case bc of
-    ASSIGN r1 r2          ->  mkILASSIGN info r1 r2
-    ASSIGNCONST r c       ->  mkILASSIGNCONST info r c
-    UPDATE r1 r2          ->  mkILASSIGN info r1 r2
-    ADDTOP n              ->  mkILADDTOP info n
-    NULL r                ->  mkILNULL info r
-    CALL n                ->  mkILCALL info n
-    TAILCALL n            ->  mkILTAILCALL info n
-    FOREIGNCALL r _ t n a ->  mkILFOREIGN info r n a t
-    TOPBASE n             ->  mkILTOPBASE info n
-    BASETOP n             ->  mkILBASETOP info n
-    STOREOLD              ->  mkILSTOREOLD info
-    SLIDE n               ->  mkILSLIDE info n
-    REBASE                ->  mkILREBASE info
-    RESERVE n             ->  mkILRESERVE info n
-    MKCON r _ t rs        ->  mkILMKCON info r t rs
-    CASE s r c d          ->  mkILCASE info s r c d
-    CONSTCASE r c d       ->  mkILCONSTCASE info r c d
-    PROJECT r l a         ->  mkILPROJECT info r l a
-    OP r o a              ->  mkILOP info r o a
-    ERROR e               ->  mkILERROR info e
-    _                     ->  ILRaw $ "//" ++ show bc
