@@ -2,13 +2,13 @@
 
 module IRTS.CodegenFFI where
 
-import IRTS.IL.AST
 import Data.Char
 import Data.List (intersperse)
 
 import qualified Data.Text as T
 import qualified Text.Printf as PF
 
+data FFI = FFICode Char | FFIArg Int | FFIError String
 
 ffi :: String -> [String] -> T.Text
 ffi code args = let parsed = ffiParse code in
