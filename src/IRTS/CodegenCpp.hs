@@ -9,6 +9,7 @@ import IRTS.System hiding (getDataDir)
 import IRTS.CodegenCommon
 import IRTS.IL.AST
 import IRTS.CodegenIL
+import IRTS.CodegenFFI
 import Idris.Core.TT
 import Util.System
 
@@ -314,9 +315,6 @@ instance CompileInfo CompileCpp where
           (LSLe ty) -> mkNumCompOp ty mkILLessThanEq    lhs rhs
           (LSGt ty) -> mkNumCompOp ty mkILGreaterThan   lhs rhs
           (LSGe ty) -> mkNumCompOp ty mkILGreaterThanEq lhs rhs
-
-          (LTrunc ITNative (ITFixed IT8)) -> 
-              mkBox (wordTy 8) $ mkILBitAnd (mkUnbox intTy $ translateReg arg) (ILRaw "0xFFu")
 
           (LTrunc ITNative (ITFixed IT8))        -> mkTrunc intTy        8  "0xFFu"
           (LTrunc (ITFixed IT16) (ITFixed IT8))  -> mkTrunc (wordTy 16)  8  "0xFFu"
