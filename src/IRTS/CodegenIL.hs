@@ -4,24 +4,12 @@ import Idris.AbsSyntax hiding (TypeCase)
 import IRTS.Bytecode
 import IRTS.Lang
 import IRTS.Simplified
-import IRTS.System hiding (getDataDir)
 import IRTS.CodegenCommon
 import IRTS.IL.AST
 import Idris.Core.TT
--- import Util.System
-
 import Numeric
 import Data.Char
-import Data.List (intercalate)
--- import System.Process
--- import System.Exit
--- import System.IO
--- import System.Directory
--- import Control.Monad.State
--- import Control.Arrow
 
-import qualified Data.Text as T
-import qualified Data.Text.IO as TIO
 import qualified Text.Printf as PF
 
 class CompileInfo a where
@@ -35,6 +23,15 @@ class CompileInfo a where
   mkTopBase :: a -> Int -> ILExpr
   mkBaseTop :: a -> Int -> ILExpr
   mkStoreOld :: a -> ILExpr
+  mkSlide :: a -> Int -> ILExpr
+  mkRebase :: a -> ILExpr
+  mkReserve :: a -> Int -> ILExpr
+  mkMakeCon :: a -> Reg -> Int -> [Reg] -> ILExpr
+  mkConstCase :: a -> Reg -> [(Const, [BC])] -> Maybe [BC] -> ILExpr
+  mkCase :: a -> Bool -> Reg -> [(Int, [BC])] -> Maybe [BC] -> ILExpr  
+  mkProject :: a -> Reg -> Int -> Int -> ILExpr
+  mkOp :: a -> Reg -> PrimFn -> [Reg] -> ILExpr
+  mkError :: a -> String -> ILExpr
 
 
 translateConstant :: Const -> ILExpr
@@ -87,14 +84,14 @@ translateBC info bc =
     TOPBASE n             ->  mkTopBase info n
     BASETOP n             ->  mkBaseTop info n
     STOREOLD              ->  mkStoreOld info
-    SLIDE n               ->  mkILSLIDE info n
-    REBASE                ->  mkILREBASE info
-    RESERVE n             ->  mkILRESERVE info n
-    MKCON r _ t rs        ->  mkILMKCON info r t rs
-    CASE s r c d          ->  mkILCASE info s r c d
-    CONSTCASE r c d       ->  mkILCONSTCASE info r c d
-    PROJECT r l a         ->  mkILPROJECT info r l a
-    OP r o a              ->  mkILOP info r o a
-    ERROR e               ->  mkILERROR info e
+    SLIDE n               ->  mkSlide info n
+    REBASE                ->  mkRebase info
+    RESERVE n             ->  mkReserve info n
+    MKCON r _ t rs        ->  mkMakeCon info r t rs
+    CASE s r c d          ->  mkCase info s r c d
+    CONSTCASE r c d       ->  mkConstCase info r c d
+    PROJECT r l a         ->  mkProject info r l a
+    OP r o a              ->  mkOp info r o a
+    ERROR e               ->  mkError info e
     _                     ->  ILRaw $ "//" ++ show bc
     

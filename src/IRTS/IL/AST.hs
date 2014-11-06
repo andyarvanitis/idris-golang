@@ -219,6 +219,7 @@ compileIL' indent (ILPtrProj obj field)
   | otherwise =
     compileIL' indent obj `T.append` "->" `T.append` T.pack field
 
+-- TODO: move some of these
 compileIL' indent ILNull =
   "nullptr"
 
@@ -402,6 +403,24 @@ mkILGreaterThan lhs rhs = ILBinOp ">" lhs rhs
 
 mkILGreaterThanEq :: ILExpr -> ILExpr -> ILExpr
 mkILGreaterThanEq lhs rhs = ILBinOp ">=" lhs rhs
+
+mkILBitAnd :: ILExpr -> ILExpr -> ILExpr
+mkILBitAnd lhs rhs = ILBinOp "&" lhs rhs
+
+mkILBitOr :: ILExpr -> ILExpr -> ILExpr
+mkILBitOr lhs rhs = ILBinOp "|" lhs rhs
+
+mkILBitXor :: ILExpr -> ILExpr -> ILExpr
+mkILBitXor lhs rhs = ILBinOp "^" lhs rhs
+
+mkILBitShl :: ILExpr -> ILExpr -> ILExpr
+mkILBitShl lhs rhs = ILBinOp "<<" lhs rhs
+
+mkILBitShr :: ILExpr -> ILExpr -> ILExpr
+mkILBitShr lhs rhs = ILBinOp ">>" lhs rhs
+
+mkILBitCompl :: ILExpr -> ILExpr
+mkILBitCompl n = ILPreOp "~" n
 
 mkILZero :: ILExpr
 mkILZero = ILNum (ILInt 0)
