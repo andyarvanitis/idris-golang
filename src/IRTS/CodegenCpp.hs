@@ -2,7 +2,6 @@
 
 module IRTS.CodegenCpp (codegenCpp) where
 
-import Idris.AbsSyntax hiding (TypeCase)
 import IRTS.Bytecode
 import IRTS.Lang
 import IRTS.Simplified
@@ -164,7 +163,7 @@ instance CompileInfo CompileCpp where
                       0 -> ILNoop
                       _ -> ILBinOp "+=" mkStacktop (ILNum (ILInt n))
 
-  mkNull _ r = ILAssign (translateReg r) ILNull
+  mkNullAssign _ r = ILAssign (translateReg r) mkNull
 
   mkCall _ n = mkILCall "vm_call" [mkVM, ILIdent (translateName n), mkMyOldbase]
 
@@ -189,7 +188,7 @@ instance CompileInfo CompileCpp where
                      ILAssign (translateReg reg) (mkBox intTy $ mkILCall "fileError" [mkUnbox managedPtrTy $ translateReg fh])
 
       "isNull" -> let [(_, arg)] = args in
-                  ILAssign (translateReg reg) (mkBox boolTy $ mkILEq (translateReg arg) ILNull)
+                  ILAssign (translateReg reg) (mkBox boolTy $ mkILEq (translateReg arg) mkNull)
 
       "idris_eqPtr" -> let [(_, lhs),(_, rhs)] = args in
                     ILAssign (translateReg reg) (mkILEq (translateReg lhs) (translateReg rhs))
@@ -199,7 +198,7 @@ instance CompileInfo CompileCpp where
 
       _ -> ILAssign (translateReg reg) (let callexpr = ILFFI n (map generateWrapper args) in
                                          case ret of
-                                           FUnit -> ILBinOp "," ILNull callexpr
+                                           FUnit -> ILBinOp "," mkNull callexpr
                                            _     -> mkBox (T.unpack . compileIL $ foreignToBoxed ret) $ callexpr)
       where
         generateWrapper :: (FType, Reg) -> ILExpr
@@ -228,7 +227,7 @@ instance CompileInfo CompileCpp where
         foreignToBoxed :: FType -> ILExpr
         foreignToBoxed (FArith (ATInt ITNative))       = ILIdent intTy
         foreignToBoxed (FArith (ATInt ITChar))         = ILIdent charTy
-        foreignToBoxed (FArith (ATInt ITBig))          = ILIdent bigintTy
+        foreignToBoxed (FArith (ATInt ITBig))          = ILIdent bigIntTy
         foreignToBoxed (FArith (ATInt (ITFixed IT8)))  = ILIdent (wordTy 8)
         foreignToBoxed (FArith (ATInt (ITFixed IT16))) = ILIdent (wordTy 16)
         foreignToBoxed (FArith (ATInt (ITFixed IT32))) = ILIdent (wordTy 32)
@@ -285,7 +284,7 @@ instance CompileInfo CompileCpp where
         prepBranch bc = ILSeq $ map (translateBC info) bc
 
         mkTag expr =
-          (ILTernary (expr `mkILInstanceOf` "Con::typeId") (
+          (ILTernary (mkIsCon expr) (
             ILProj (mkUnbox conTy expr) "tag"
           ) (ILNum (ILInt $ negate 1)))
 
@@ -304,42 +303,28 @@ instance CompileInfo CompileCpp where
 
           (LZExt sty dty) -> boxedIntegral dty $ unboxedIntegral sty (last args)
 
-          (LPlus ty) -> boxedNum ty $ mkILAdd (unboxedNum ty lhs) (unboxedNum ty rhs)
+          (LPlus ty)  -> mkNumBinOp ty mkILAdd      lhs rhs
+          (LMinus ty) -> mkNumBinOp ty mkILSubtract lhs rhs
+          (LTimes ty) -> mkNumBinOp ty mkILMultiply lhs rhs
+          (LSDiv ty)  -> mkNumBinOp ty mkILDivide   lhs rhs
+          (LSRem ty)  -> mkNumBinOp ty mkILModulo   lhs rhs
 
-          (LMinus ty) -> boxedNum ty $ mkILSubtract (unboxedNum ty lhs) (unboxedNum ty rhs)
+          (LEq ty)  -> mkNumCompOp ty mkILEq            lhs rhs
+          (LSLt ty) -> mkNumCompOp ty mkILLessThan      lhs rhs
+          (LSLe ty) -> mkNumCompOp ty mkILLessThanEq    lhs rhs
+          (LSGt ty) -> mkNumCompOp ty mkILGreaterThan   lhs rhs
+          (LSGe ty) -> mkNumCompOp ty mkILGreaterThanEq lhs rhs
 
-          (LTimes ty) -> boxedNum ty $ mkILMultiply (unboxedNum ty lhs) (unboxedNum ty rhs)
+          (LTrunc ITNative (ITFixed IT8)) -> 
+              mkBox (wordTy 8) $ mkILBitAnd (mkUnbox intTy $ translateReg arg) (ILRaw "0xFFu")
 
-          (LSDiv ty) -> boxedNum ty $ mkILDivide (unboxedNum ty lhs) (unboxedNum ty rhs)
+          (LTrunc ITNative (ITFixed IT8))        -> mkTrunc intTy        8  "0xFFu"
+          (LTrunc (ITFixed IT16) (ITFixed IT8))  -> mkTrunc (wordTy 16)  8  "0xFFu"
+          (LTrunc (ITFixed IT32) (ITFixed IT16)) -> mkTrunc (wordTy 32) 16  "0xFFFFu"
+          (LTrunc (ITFixed IT64) (ITFixed IT32)) -> mkTrunc (wordTy 64) 32  "0xFFFFFFFFu"
+          (LTrunc ITBig (ITFixed IT64))          -> mkTrunc bigIntTy    64  "0xFFFFFFFFFFFFFFFFu"
 
-          (LSRem ty) -> boxedNum ty $ mkILModulo (unboxedNum ty lhs) (unboxedNum ty rhs)
-
-          (LEq ty) -> boxedNum ty $ mkILEq (unboxedNum ty lhs) (unboxedNum ty rhs)
-
-          (LSLt ty) -> boxedNum ty $ mkILLessThan (unboxedNum ty lhs) (unboxedNum ty rhs)
-
-          (LSLe ty) -> boxedNum ty $ mkILLessThanEq (unboxedNum ty lhs) (unboxedNum ty rhs)
-
-          (LSGt ty) -> boxedNum ty $ mkILGreaterThan (unboxedNum ty lhs) (unboxedNum ty rhs)
-
-          (LSGe ty) -> boxedNum ty $ mkILGreaterThanEq (unboxedNum ty lhs) (unboxedNum ty rhs)
-
-          (LTrunc ITNative (ITFixed IT8)) -> mkBox (wordTy 8) $ 
-                                             mkILBitAnd (mkUnbox intTy $ translateReg arg) (ILRaw "0xFFu")
-
-          (LTrunc (ITFixed IT16) (ITFixed IT8)) -> mkBox (wordTy 8) $ 
-                                                   mkILBitAnd (mkUnbox (wordTy 16) $ translateReg arg) (ILRaw "0xFFu")
-
-          (LTrunc (ITFixed IT32) (ITFixed IT16)) -> mkBox (wordTy 16) $ 
-                                                    mkILBitAnd (mkUnbox (wordTy 32) $ translateReg arg) (ILRaw "0xFFFFu")
-
-          (LTrunc (ITFixed IT64) (ITFixed IT32)) -> mkBox (wordTy 32) $
-                                                    mkILBitAnd (mkUnbox (wordTy 64) $ translateReg arg) (ILRaw "0xFFFFFFFFu")
-
-          (LTrunc ITBig (ITFixed IT64)) -> mkBox (wordTy 64) $ 
-                                           mkILBitAnd (mkUnbox bigintTy $ translateReg arg) (ILRaw "0xFFFFFFFFFFFFFFFFu")
-
-          (LTrunc ITBig ITNative) -> mkBox intTy $ mkILStaticCast (intTy ++ "::type") (mkUnbox bigintTy $ translateReg arg)
+          (LTrunc ITBig ITNative) -> mkBox intTy $ mkCast (intTy ++ "::type") (mkUnbox bigIntTy $ translateReg arg)
 
           (LLSHR ty@(ITFixed _)) -> mkOp' (LASHR ty)
           (LLt ty@(ITFixed _))   -> mkOp' (LSLt (ATInt ty))
@@ -348,31 +333,23 @@ instance CompileInfo CompileCpp where
           (LGe ty@(ITFixed _))   -> mkOp' (LSGe (ATInt ty))
           (LUDiv ty@(ITFixed _)) -> mkOp' (LSDiv (ATInt ty))
 
-          (LAnd ty) -> boxedIntegral ty $ mkILBitAnd (unboxedIntegral ty lhs) (unboxedIntegral ty rhs)
-
-          (LOr ty)  -> boxedIntegral ty $ mkILBitOr (unboxedIntegral ty lhs) (unboxedIntegral ty rhs)
-
-          (LXOr ty) -> boxedIntegral ty $ mkILBitXor (unboxedIntegral ty lhs) (unboxedIntegral ty rhs)
-
-          (LSHL ty) -> boxedIntegral ty $ mkILBitShl (unboxedIntegral ty lhs) (mkAsIntegral $ translateReg rhs)
-
+          (LAnd ty)   -> boxedIntegral ty $ mkILBitAnd (unboxedIntegral ty lhs) (unboxedIntegral ty rhs)
+          (LOr ty)    -> boxedIntegral ty $ mkILBitOr  (unboxedIntegral ty lhs) (unboxedIntegral ty rhs)
+          (LXOr ty)   -> boxedIntegral ty $ mkILBitXor (unboxedIntegral ty lhs) (unboxedIntegral ty rhs)
+          (LSHL ty)   -> boxedIntegral ty $ mkILBitShl (unboxedIntegral ty lhs) (mkAsIntegral $ translateReg rhs)
           (LASHR ty)  -> boxedIntegral ty $ mkILBitShr (unboxedIntegral ty lhs) (mkAsIntegral $ translateReg rhs)
-
           (LCompl ty) -> boxedIntegral ty $ mkILBitCompl (unboxedIntegral ty arg)
 
           LStrConcat -> mkBox stringTy $ mkILAdd (unboxedString lhs) (unboxedString rhs)
-
-          LStrEq -> mkBox boolTy $ mkILEq (unboxedString lhs) (unboxedString rhs)
-
-          LStrLt -> mkBox boolTy $ mkILLessThan (unboxedString lhs) (unboxedString rhs)
-
-          LStrLen -> mkBox intTy $ mkILStaticCast (intTy ++ "::type") (strLen (mkUnbox stringTy $ translateReg arg)) -- TODO: int size 64?
+          LStrEq     -> mkBox boolTy $ mkILEq (unboxedString lhs) (unboxedString rhs)
+          LStrLt     -> mkBox boolTy $ mkILLessThan (unboxedString lhs) (unboxedString rhs)
+          LStrLen    -> mkBox intTy $ mkCast (intTy ++ "::type") (strLen (mkUnbox stringTy $ translateReg arg)) -- TODO: int size 64?
 
           (LStrInt ITNative)     -> mkBox intTy $ mkILCall "stoi" [mkUnbox stringTy $ translateReg arg]
           (LIntStr ITNative)     -> mkBox stringTy $ mkAsString $ translateReg arg
-          (LSExt ITNative ITBig) -> mkBox bigintTy $ mkUnbox intTy $ translateReg arg
+          (LSExt ITNative ITBig) -> mkBox bigIntTy $ mkUnbox intTy $ translateReg arg
           (LIntStr ITBig)        -> mkBox stringTy $ mkAsString $ translateReg arg
-          (LStrInt ITBig)        -> mkBox bigintTy $ mkILCall "stoll" [mkUnbox stringTy $ translateReg arg]
+          (LStrInt ITBig)        -> mkBox bigIntTy $ mkILCall "stoll" [mkUnbox stringTy $ translateReg arg]
           LFloatStr              -> mkBox stringTy $ mkAsString $ translateReg arg
           LStrFloat              -> mkBox floatTy $ mkILCall "stod" [mkUnbox stringTy $ translateReg arg]
           (LIntFloat ITNative)   -> mkBox floatTy $ mkUnbox intTy $ translateReg arg
@@ -380,24 +357,24 @@ instance CompileInfo CompileCpp where
           (LChInt ITNative)      -> mkBox intTy $ mkUnbox charTy $ translateReg arg
           (LIntCh ITNative)      -> mkBox charTy $ mkUnbox intTy $ translateReg arg
 
-          LFExp   -> mkBox floatTy $ mkILCall "exp"   [mkUnbox floatTy $ translateReg arg]
-          LFLog   -> mkBox floatTy $ mkILCall "log"   [mkUnbox floatTy $ translateReg arg]
-          LFSin   -> mkBox floatTy $ mkILCall "sin"   [mkUnbox floatTy $ translateReg arg]
-          LFCos   -> mkBox floatTy $ mkILCall "cos"   [mkUnbox floatTy $ translateReg arg]
-          LFTan   -> mkBox floatTy $ mkILCall "tan"   [mkUnbox floatTy $ translateReg arg]
-          LFASin  -> mkBox floatTy $ mkILCall "asin"  [mkUnbox floatTy $ translateReg arg]
-          LFACos  -> mkBox floatTy $ mkILCall "acos"  [mkUnbox floatTy $ translateReg arg]
-          LFATan  -> mkBox floatTy $ mkILCall "atan"  [mkUnbox floatTy $ translateReg arg]
-          LFSqrt  -> mkBox floatTy $ mkILCall "sqrt"  [mkUnbox floatTy $ translateReg arg]
-          LFFloor -> mkBox floatTy $ mkILCall "floor" [mkUnbox floatTy $ translateReg arg]
-          LFCeil  -> mkBox floatTy $ mkILCall "ceil"  [mkUnbox floatTy $ translateReg arg]
+          LFExp   -> floatfn "exp"   arg
+          LFLog   -> floatfn "log"   arg
+          LFSin   -> floatfn "sin"   arg
+          LFCos   -> floatfn "cos"   arg
+          LFTan   -> floatfn "tan"   arg
+          LFASin  -> floatfn "asin"  arg
+          LFACos  -> floatfn "acos"  arg
+          LFATan  -> floatfn "atan"  arg
+          LFSqrt  -> floatfn "sqrt"  arg
+          LFFloor -> floatfn "floor" arg
+          LFCeil  -> floatfn "ceil"  arg
 
           LStrCons -> mkBox stringTy $ mkILAdd (mkAsString $ translateReg lhs) (unboxedString rhs)
 
           LStrHead -> let str = unboxedString arg in
                       ILTernary (mkILAnd (translateReg arg) (ILPreOp "!" (mkILMeth str "empty" [])))
                                 (mkBox charTy $ mkILCall "utf8_head" [str])
-                                ILNull
+                                mkNull
 
           LStrRev   -> mkBox stringTy $ mkILCall "reverse" [mkUnbox stringTy $ translateReg arg]
 
@@ -410,7 +387,7 @@ instance CompileInfo CompileCpp where
 
           LReadStr    -> mkBox stringTy $ mkILCall "freadStr" [mkUnbox managedPtrTy $ translateReg arg]
           LSystemInfo -> mkBox stringTy $ mkILCall "systemInfo"  [translateReg arg]
-          LNullPtr    -> ILNull
+          LNullPtr    -> mkNull
 
           _ -> ILError $ "Not implemented: " ++ show op
 
@@ -418,27 +395,24 @@ instance CompileInfo CompileCpp where
             (lhs:rhs:_) = args
             (arg:_) = args
 
-            strLen :: ILExpr -> ILExpr
+            mkNumBinOp ty f lhs rhs = boxedNum ty $ f (unboxedNum ty lhs) (unboxedNum ty rhs)
+            mkNumCompOp ty f lhs rhs = mkBox boolTy $ f (unboxedNum ty lhs) (unboxedNum ty rhs)
+
+            mkTrunc src dst mask = 
+                mkBox (wordTy dst) $ mkILBitAnd (mkUnbox src $ translateReg arg) (ILRaw mask)
+
             strLen s = mkILMeth s "length" []
 
-            unboxedNum :: ArithTy -> Reg -> ILExpr
-            unboxedNum ty reg = mkUnbox (arithTy ty) (translateReg reg)
-
-            boxedNum :: ArithTy -> ILExpr -> ILExpr
-            boxedNum ty expr = mkBox (arithTy ty) expr
-
-            unboxedIntegral :: IntTy -> Reg -> ILExpr
-            unboxedIntegral ty reg = mkUnbox (arithTy (ATInt ty)) (translateReg reg)
-
-            boxedIntegral :: IntTy -> ILExpr -> ILExpr
-            boxedIntegral ty expr = mkBox (arithTy (ATInt ty)) expr
-
-            unboxedString :: Reg -> ILExpr
             unboxedString reg = mkUnbox stringTy (translateReg reg)
 
-            arithTy :: ArithTy -> String
+            boxedNum ty expr = mkBox (arithTy ty) expr
+            unboxedNum ty reg = mkUnbox (arithTy ty) (translateReg reg)
+
+            boxedIntegral ty expr = mkBox (arithTy (ATInt ty)) expr
+            unboxedIntegral ty reg = mkUnbox (arithTy (ATInt ty)) (translateReg reg)
+
             arithTy (ATInt ITNative)       = intTy
-            arithTy (ATInt ITBig)          = bigintTy
+            arithTy (ATInt ITBig)          = bigIntTy
             arithTy (ATInt ITChar)         = charTy
             arithTy (ATFloat)              = floatTy
             arithTy (ATInt (ITFixed IT8))  = wordTy 8
@@ -447,63 +421,41 @@ instance CompileInfo CompileCpp where
             arithTy (ATInt (ITFixed IT64)) = wordTy 64
             arithTy (ty)                   = "UNKNOWN TYPE: " ++ show ty
 
+            floatfn fn r = mkBox floatTy $ mkILCall fn  [mkUnbox floatTy $ translateReg r]
+
   mkError _ = ILError
+-------------------------------------------------------------------------------
 
-vm :: String
-vm = "vm"
-
-mkVM :: ILExpr
-mkVM = ILIdent vm
-
-mkStack :: ILExpr
-mkStack = ILPtrProj mkVM "valstack"
-
-mkCallstack :: ILExpr
-mkCallstack = ILPtrProj mkVM "callstack"
-
-mkArgstack :: ILExpr
-mkArgstack = ILPtrProj mkVM "argstack"
-
-mkStackbase :: ILExpr
-mkStackbase = ILPtrProj mkVM "valstack_base"
-
-mkStacktop :: ILExpr
-mkStacktop = ILPtrProj mkVM "valstack_top"
-
-baseType :: String
-baseType = "IndexType"
-
-oldbase :: String
-oldbase = "oldbase"
-
-mkOldbase :: ILExpr
-mkOldbase = ILIdent oldbase
-
-myoldbase :: String
+vm        = "vm"
+baseType  = "IndexType"
+oldbase   = "oldbase"
 myoldbase = "myoldbase"
 
-mkMyOldbase :: ILExpr
+mkVM        = ILIdent vm
+mkStack     = ILPtrProj mkVM "valstack"
+mkCallstack = ILPtrProj mkVM "callstack"
+mkArgstack  = ILPtrProj mkVM "argstack"
+mkStackbase = ILPtrProj mkVM "valstack_base"
+mkStacktop  = ILPtrProj mkVM "valstack_top"
+mkRet       = ILPtrProj mkVM "ret"
+mkOldbase   = ILIdent oldbase
 mkMyOldbase = ILIdent myoldbase
+mkNull      = ILIdent nullptr
 
-fnParams :: [String]
-fnParams = ["shared_ptr<VirtualMachine>& " ++ vm, baseType ++ " " ++ oldbase]
-
-mkRet :: ILExpr
-mkRet = ILPtrProj mkVM "ret"
-
-mkLoc :: Int -> ILExpr
 mkLoc 0 = ILIndex mkStack mkStackbase
 mkLoc n = ILIndex mkStack (mkILAdd mkStackbase (ILNum (ILInt n)))
 
-mkTop :: Int -> ILExpr
 mkTop 0 = ILIndex mkStack mkStacktop
 mkTop n = ILIndex mkStack (mkILAdd mkStacktop (ILNum (ILInt n)))
 
-mkPush :: [ILExpr] -> ILExpr
 mkPush args = ILApp (ILProj mkCallstack "push") args
+mkPop       = ILBinOp ";" (mkILMeth mkCallstack "top" []) (mkILMeth mkCallstack "pop" [])
 
-mkPop :: ILExpr
-mkPop = ILBinOp ";" (mkILMeth mkCallstack "top" []) (mkILMeth mkCallstack "pop" [])
+mkIsCon :: ILExpr -> ILExpr
+mkIsCon obj = mkILAnd obj (mkILEq (mkILPtrMeth obj "getTypeId" []) (ILIdent "Con::typeId"))
+
+fnParams :: [String]
+fnParams = ["shared_ptr<VirtualMachine>& " ++ vm, baseType ++ " " ++ oldbase]
 
 mkBox' :: ILExpr -> ILExpr
 mkBox' obj = mkBox (unboxedType obj) obj
@@ -515,7 +467,7 @@ unboxedType :: ILExpr -> String
 unboxedType e = case e of
                   (ILString _)                     -> stringTy
                   (ILNum (ILFloat _))              -> floatTy
-                  (ILNum (ILInteger (ILBigInt _))) -> bigintTy
+                  (ILNum (ILInteger (ILBigInt _))) -> bigIntTy
                   (ILNum _)                        -> intTy
                   (ILChar _)                       -> charTy
                   (ILWord (ILWord8 _))             -> wordTy 8
@@ -535,33 +487,19 @@ mkAsString obj = mkILPtrMeth obj "asString" []
 mkAsIntegral :: ILExpr -> ILExpr
 mkAsIntegral obj = mkILPtrMeth obj "asIntegral" []
 
-intTy :: String
-intTy = "Int"
+mkCast :: String -> ILExpr -> ILExpr
+mkCast typ expr = mkILCall ("static_cast" ++ "<" ++ typ ++ ">") [expr]
 
-bigintTy :: String
-bigintTy = "BigInt"
-
-floatTy :: String
-floatTy = "Float"
-
-stringTy :: String
-stringTy = "String"
-
-charTy :: String
-charTy = "Char"
+nullptr      = "nullptr"
+intTy        = "Int"
+bigIntTy     = "BigInt"
+floatTy      = "Float"
+stringTy     = "String"
+charTy       = "Char"
+managedPtrTy = "ManagedPtr"
+ptrTy        = "Ptr"
+conTy        = "Con"
+boolTy       = intTy
 
 wordTy :: Int -> String
 wordTy n = PF.printf "Word%d" n
-
-managedPtrTy :: String
-managedPtrTy = "ManagedPtr"
-
-ptrTy :: String
-ptrTy = "Ptr"
-
-conTy :: String
-conTy = "Con"
-
-boolTy :: String
-boolTy = intTy
-

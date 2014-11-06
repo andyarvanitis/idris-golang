@@ -1,6 +1,5 @@
 module IRTS.CodegenIL where
 
-import Idris.AbsSyntax hiding (TypeCase)
 import IRTS.Bytecode
 import IRTS.Lang
 import IRTS.Simplified
@@ -16,7 +15,7 @@ class CompileInfo a where
   mkAssign :: a -> Reg -> Reg -> ILExpr
   mkAssignConst :: a -> Reg -> Const -> ILExpr
   mkAddTop :: a -> Int -> ILExpr
-  mkNull :: a -> Reg -> ILExpr
+  mkNullAssign :: a -> Reg -> ILExpr
   mkCall :: a -> Name -> ILExpr
   mkTailCall :: a -> Name -> ILExpr
   mkForeign :: a -> Reg -> String -> [(FType, Reg)] -> FType -> ILExpr
@@ -77,7 +76,7 @@ translateBC info bc =
     ASSIGNCONST r c       ->  mkAssignConst info r c
     UPDATE r1 r2          ->  mkAssign info r1 r2
     ADDTOP n              ->  mkAddTop info n
-    NULL r                ->  mkNull info r
+    NULL r                ->  mkNullAssign info r
     CALL n                ->  mkCall info n
     TAILCALL n            ->  mkTailCall info n
     FOREIGNCALL r _ t n a ->  mkForeign info r n a t

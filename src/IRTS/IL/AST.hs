@@ -53,11 +53,6 @@ data ILExpr = ILRaw String
         | ILPostOp String ILExpr
         | ILProj ILExpr String
         | ILPtrProj ILExpr String
-        | ILNull
-        | ILUndefined
-        | ILThis
-        | ILTrue
-        | ILFalse
         | ILArray [ILExpr]
         | ILString String
         | ILChar String
@@ -148,15 +143,6 @@ compileIL' indent (ILFunction args body) =
    `T.append` compileIL' (indent + 2) body
    `T.append` "\n}\n"
 
-compileIL' indent (ILType ty)
-  | ILIntTy     <- ty = "i_Int"
-  | ILStringTy  <- ty = "i_String"
-  | ILIntegerTy <- ty = "i_Integer"
-  | ILFloatTy   <- ty = "i_Float"
-  | ILCharTy    <- ty = "i_Char"
-  | ILPtrTy     <- ty = "i_Ptr"
-  | ILForgotTy  <- ty = "i_Forgot"
-
 compileIL' indent (ILSeq seq) =
   T.intercalate ";\n" (
     map (
@@ -218,22 +204,6 @@ compileIL' indent (ILPtrProj obj field)
     T.concat ["(", compileIL' indent obj, ")->", T.pack field]
   | otherwise =
     compileIL' indent obj `T.append` "->" `T.append` T.pack field
-
--- TODO: move some of these
-compileIL' indent ILNull =
-  "nullptr"
-
-compileIL' indent ILUndefined =
-  "undefined"
-
-compileIL' indent ILThis =
-  "this"
-
-compileIL' indent ILTrue =
-  "true"
-
-compileIL' indent ILFalse =
-  "false"
 
 compileIL' indent (ILArray elems) =
   "{" `T.append` T.intercalate "," (map (compileIL' 0) elems) `T.append` "}"
@@ -367,10 +337,6 @@ compileIL' indent (ILWord word)
       fromInt n = ILNum $ ILInt (fromIntegral n)
       fromBigInt n = ILNum . ILInteger . ILBigInt $ fromIntegral n
 
--- TODO: move
-mkILInstanceOf :: ILExpr -> String -> ILExpr
-mkILInstanceOf obj cls = mkILAnd obj (mkILEq (mkILPtrMeth obj "getTypeId" []) (ILIdent cls))
-
 mkILOr :: ILExpr -> ILExpr -> ILExpr
 mkILOr lhs rhs = ILBinOp "||" lhs rhs
 
@@ -428,12 +394,6 @@ mkILZero = ILNum (ILInt 0)
 mkILOne :: ILExpr
 mkILOne = ILNum (ILInt 1)
 
-mkILIsNull :: ILExpr -> ILExpr
-mkILIsNull expr = ILBinOp "==" expr ILNull
-
-mkILIsNotNull :: ILExpr -> ILExpr
-mkILIsNotNull expr = ILBinOp "!=" expr ILNull
-
 mkILAdd :: ILExpr -> ILExpr -> ILExpr
 mkILAdd lhs rhs = ILBinOp "+" lhs rhs
 
@@ -449,6 +409,3 @@ mkILDivide lhs rhs = ILBinOp "/" lhs rhs
 mkILModulo :: ILExpr -> ILExpr -> ILExpr
 mkILModulo lhs rhs = ILBinOp "%" lhs rhs
 
--- TODO: move
-mkILStaticCast :: String -> ILExpr -> ILExpr
-mkILStaticCast typ expr = mkILCall ("static_cast" ++ "<" ++ typ ++ ">") [expr]
