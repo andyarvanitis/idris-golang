@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE CPP #-}
 
-module IRTS.CodegenCpp (codegenCpp) where
+module IRTS.CodegenGo (codegenGo) where
 
 import IRTS.Bytecode
 import IRTS.Lang
@@ -28,7 +28,8 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Text.Printf as PF
 
-import Paths_idris_cpp
+getDataDir :: IO String
+getDataDir = return ("/Users/andy/Idris/gorts")-- TODO: temporary
 
 -- TODO: better way to do this?
 #if defined(MACOSX) || defined(FREEBSD)
@@ -39,11 +40,11 @@ ccStandard = "-std=c++11 -stdlib=libstdc++"
 libStandard = "-lstdc++"
 #endif
 
-data CompileCpp = CompileCpp Bool -- TODO: just a placeholder
+data CompileGo = CompileGo Bool -- TODO: just a placeholder
 
-codegenCpp :: CodeGenerator
-codegenCpp ci =
-  codegenCpp_all (simpleDecls ci)
+codegenGo :: CodeGenerator
+codegenGo ci =
+  codegenGo_all (simpleDecls ci)
                  (outputType ci)
                  (outputFile ci)
                  (includes ci)
@@ -58,7 +59,7 @@ codegenCpp ci =
       mkFlag l = l ++ " "
       incdir i = "-I" ++ i ++ " "
 
-codegenCpp_all ::
+codegenGo_all ::
      [(Name, SDecl)] -> -- declarations/definitions
      OutputType ->      -- output type
      FilePath ->        -- output file name
@@ -69,18 +70,18 @@ codegenCpp_all ::
      DbgLevel ->        -- debug level
      IO ()
 
-codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
-  let info = CompileCpp True
+codegenGo_all definitions outputType filename includes objs libs flags dbg = do
+  let info = CompileGo True
   let bytecode = map toBC definitions
   let decls = concatMap toDecl (map fst bytecode)
-  let cpp = concatMap (toCpp info) bytecode
+  let go = concatMap (toGo info) bytecode
   let (header, rt) = ("", "")
   path <- getDataDir
-  let cppout = (  T.pack (headers includes)
-                  `T.append` namespaceBegin
-                  `T.append` T.pack decls
-                  `T.append` T.concat (map (compile info) cpp)
-                  `T.append` namespaceEnd
+  let cppout = (  T.pack "// Golang output\n//\n\n\n" -- (headers includes)
+                  -- `T.append` namespaceBegin
+                  -- `T.append` T.pack decls
+                  `T.append` T.concat (map (compile info) go)
+                  -- `T.append` namespaceEnd
                )
   case outputType of
     Raw -> TIO.writeFile filename cppout
@@ -138,11 +139,10 @@ codegenCpp_all definitions outputType filename includes objs libs flags dbg = do
       namespaceEnd :: T.Text
       namespaceEnd = T.pack "} // namespace idris\n"
 
-toCpp info (name, bc) =
-  [ ASTIdent $ "void " ++ translateName name,
+toGo info (name, bc) =
+  [ ASTIdent $ "func " ++ translateName name,
     ASTFunction fnParams (
       ASTSeq $ ASTAlloc (Just baseType) myoldbase Nothing
-               : ASTPreOp "(void)" mkMyOldbase
                : map (translateBC info)bc
     )
   ]
@@ -156,7 +156,7 @@ translateReg reg =
     T n  -> mkTop n
 
 -------------------------------------------------------------------------------
-instance CompileInfo CompileCpp where
+instance CompileInfo CompileGo where
 -------------------------------------------------------------------------------
   mkAssign _ r1 r2 = ASTAssign (translateReg r1) (translateReg r2)
 
@@ -426,15 +426,15 @@ instance CompileInfo CompileCpp where
   mkError _ = ASTError
 
   compileAlloc info indent (ASTAlloc typename name val) =
-    case val of Nothing   -> typ `T.append` T.pack name
-                Just expr -> typ `T.append` T.pack name `T.append` " = " `T.append` compile' info indent expr
+    case val of Nothing   -> decl
+                Just expr -> decl `T.append` " = " `T.append` compile' info indent expr
                 where
-                  typ = case typename of Nothing -> T.pack "auto "
-                                         Just t  -> T.pack (t ++ " ")
+                  decl = case typename of Nothing -> T.pack ("var " ++ name)
+                                          Just t  -> T.pack ("var " ++ name ++ " " ++ t)
 -------------------------------------------------------------------------------
 
 vm        = "vm"
-baseType  = "IndexType"
+baseType  = "uintptr"
 oldbase   = "oldbase"
 myoldbase = "myoldbase"
 
@@ -462,13 +462,14 @@ mkIsCon :: ASTNode -> ASTNode
 mkIsCon obj = mkAnd obj (mkEq (mkPtrMeth obj "getTypeId" []) (ASTIdent "Con::typeId"))
 
 fnParams :: [String]
-fnParams = ["shared_ptr<VirtualMachine>& " ++ vm, baseType ++ " " ++ oldbase]
+fnParams = [vm ++ " *VirtualMachine", oldbase ++ " " ++ baseType]
 
 mkBox' :: ASTNode -> ASTNode
 mkBox' obj = mkBox (unboxedType obj) obj
 
 mkUnbox :: String -> ASTNode -> ASTNode
-mkUnbox typ obj = ASTApp (ASTIdent $ "unbox" ++ "<" ++ typ ++ ">") [obj]
+-- mkUnbox typ obj = ASTApp (ASTIdent $ "unbox" ++ "<" ++ typ ++ ">") [obj]
+mkUnbox typ obj =  ASTProj (ASTProj (mkCall "ValueOf" [obj]) "Interface()") ("(" ++ typ ++ ")")
 
 unboxedType :: ASTNode -> String
 unboxedType e = case e of
@@ -497,12 +498,12 @@ mkAsIntegral obj = mkPtrMeth obj "asIntegral" []
 mkCast :: String -> ASTNode -> ASTNode
 mkCast typ expr = mkCall ("static_cast" ++ "<" ++ typ ++ ">") [expr]
 
-nullptr      = "nullptr"
-intTy        = "Int"
-bigIntTy     = "BigInt"
-floatTy      = "Float"
-stringTy     = "String"
-charTy       = "Char"
+nullptr      = "nil"
+intTy        = "int"
+bigIntTy     = "int64"
+floatTy      = "float64"
+stringTy     = "string"
+charTy       = "rune"
 managedPtrTy = "ManagedPtr"
 ptrTy        = "Ptr"
 conTy        = "Con"

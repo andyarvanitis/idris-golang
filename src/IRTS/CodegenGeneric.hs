@@ -39,7 +39,7 @@ class CompileInfo a where
   mkProject :: a -> Reg -> Int -> Int -> ASTNode
   mkOp :: a -> Reg -> PrimFn -> [Reg] -> ASTNode
   mkError :: a -> String -> ASTNode
-
+  compileAlloc :: a -> Int -> ASTNode -> T.Text
 
 translateConstant :: Const -> ASTNode
 translateConstant (I i)                    = ASTNum (ASTInt i)
@@ -104,178 +104,168 @@ translateBC info bc =
 
 -------------------------------------------------------------------------------
 
-compile :: ASTNode -> T.Text
-compile = compile' 0
+compile :: CompileInfo a => a -> ASTNode -> T.Text
+compile info = compile' info 0
 
-compile' :: Int -> ASTNode -> T.Text
-compile' indent ASTNoop = ""
+compile' :: CompileInfo a => a -> Int -> ASTNode -> T.Text
+compile' info indent ASTNoop = ""
 
-compile' indent (ASTAnnotation annotation expr) =
+compile' info indent (ASTAnnotation annotation expr) =
    ""
   `T.append` T.pack (show annotation)
   `T.append` " */\n"
-  `T.append` compile' indent expr
+  `T.append` compile' info indent expr
 
-compile' indent (ASTFFI raw args) =
-  ffi raw (map (T.unpack . compile' indent) args)
+compile' info indent (ASTFFI raw args) =
+  ffi raw (map (T.unpack . compile' info indent) args)
 
-compile' indent (ASTRaw code) =
+compile' info indent (ASTRaw code) =
   T.pack code
 
-compile' indent (ASTIdent ident) =
+compile' info indent (ASTIdent ident) =
   T.pack ident
 
-compile' indent (ASTFunction args body) =
+compile' info indent (ASTFunction args body) =
    T.replicate indent " " `T.append` "("
    `T.append` T.intercalate "," (map T.pack args)
    `T.append` ") {\n"
-   `T.append` compile' (indent + 2) body
+   `T.append` compile' info (indent + 2) body
    `T.append` "\n}\n"
 
-compile' indent (ASTSeq seq) =
+compile' info indent (ASTSeq seq) =
   T.intercalate ";\n" (
     map (
-      (T.replicate indent " " `T.append`) . (compile' indent)
+      (T.replicate indent " " `T.append`) . (compile' info indent)
     ) $ filter (/= ASTNoop) seq
   ) `T.append` ";"
 
-compile' indent (ASTList seq) =
+compile' info indent (ASTList seq) =
   T.intercalate "," (
     map (
-      (T.replicate indent " " `T.append`) . (compile' indent)
+      (T.replicate indent " " `T.append`) . (compile' info indent)
     ) $ filter (/= ASTNoop) seq
   )
 
-compile' indent (ASTReturn val) =
-  "return " `T.append` compile' indent val
+compile' info indent (ASTReturn val) =
+  "return " `T.append` compile' info indent val
 
-compile' indent (ASTApp lhs rhs)
+compile' info indent (ASTApp lhs rhs)
   | ASTFunction {} <- lhs =
-    T.concat ["(", compile' indent lhs, ")(", args, ")"]
+    T.concat ["(", compile' info indent lhs, ")(", args, ")"]
   | otherwise =
-    T.concat [compile' indent lhs, "(", args, ")"]
+    T.concat [compile' info indent lhs, "(", args, ")"]
   where args :: T.Text
-        args = T.intercalate "," $ map (compile' 0) rhs
+        args = T.intercalate "," $ map (compile' info 0) rhs
 
-compile' indent (ASTNew name args) =
+compile' info indent (ASTNew name args) =
   T.pack name
   `T.append` "("
-  `T.append` T.intercalate "," (map (compile' 0) args)
+  `T.append` T.intercalate "," (map (compile' info 0) args)
   `T.append` ")"
 
-compile' indent (ASTError exc) = compile (mkCall "putStr" [ASTString exc]) `T.append` "; assert(false)"
+compile' info indent (ASTError exc) = compile info (mkCall "putStr" [ASTString exc]) `T.append` "; assert(false)"
 
-compile' indent (ASTBinOp op lhs rhs) =
-    compile' indent lhs
+compile' info indent (ASTBinOp op lhs rhs) =
+    compile' info indent lhs
   `T.append` " "
   `T.append` T.pack op
   `T.append` " "
-  `T.append` compile' indent rhs
+  `T.append` compile' info indent rhs
 
-compile' indent (ASTPreOp op val) =
-  T.pack op `T.append` compile' indent val
+compile' info indent (ASTPreOp op val) =
+  T.pack op `T.append` compile' info indent val
 
-compile' indent (ASTPostOp op val) =
-  compile' indent val `T.append` T.pack op
+compile' info indent (ASTPostOp op val) =
+  compile' info indent val `T.append` T.pack op
 
-compile' indent (ASTProj obj field)
+compile' info indent (ASTProj obj field)
   | ASTFunction {} <- obj =
-    T.concat ["(", compile' indent obj, ").", T.pack field]
+    T.concat ["(", compile' info indent obj, ").", T.pack field]
   | ASTAssign {} <- obj =
-    T.concat ["(", compile' indent obj, ").", T.pack field]
+    T.concat ["(", compile' info indent obj, ").", T.pack field]
   | otherwise =
-    compile' indent obj `T.append` "." `T.append` T.pack field
+    compile' info indent obj `T.append` "." `T.append` T.pack field
 
-compile' indent (ASTPtrProj obj field)
+compile' info indent (ASTPtrProj obj field)
   | ASTFunction {} <- obj =
-    T.concat ["(", compile' indent obj, ")->", T.pack field]
+    T.concat ["(", compile' info indent obj, ")->", T.pack field]
   | ASTAssign {} <- obj =
-    T.concat ["(", compile' indent obj, ")->", T.pack field]
+    T.concat ["(", compile' info indent obj, ")->", T.pack field]
   | otherwise =
-    compile' indent obj `T.append` "->" `T.append` T.pack field
+    T.concat ["(", "*", compile' info indent obj, ")", ".", T.pack field]
 
-compile' indent (ASTArray elems) =
-  "{" `T.append` T.intercalate "," (map (compile' 0) elems) `T.append` "}"
+compile' info indent (ASTArray elems) =
+  "{" `T.append` T.intercalate "," (map (compile' info 0) elems) `T.append` "}"
 
-compile' indent (ASTString str) =
+compile' info indent (ASTString str) =
   "\"" `T.append` T.pack str `T.append` "\""
 
-compile' indent (ASTChar c) =
+compile' info indent (ASTChar c) =
   "'" `T.append` T.pack c `T.append` "'"
 
-compile' indent (ASTNum num) =
+compile' info indent (ASTNum num) =
   case num of
     ASTInt i                     -> T.pack (show i)
     ASTFloat f                   -> T.pack (show f)
     ASTInteger (ASTBigInt i)     -> T.pack $ big i
-    ASTInteger (ASTBigIntExpr e) -> compile' indent e
+    ASTInteger (ASTBigIntExpr e) -> compile' info indent e
   where
     big :: Integer -> String
     big i
       | i > (toInteger (maxBound::Int)) || i < (toInteger (minBound::Int)) = "asBig(" ++ (show i) ++ ")"
       | otherwise = show i
 
-compile' indent (ASTAssign lhs rhs) =
-  compile' indent lhs `T.append` " = " `T.append` compile' indent rhs
+compile' info indent (ASTAssign lhs rhs) =
+  compile' info indent lhs `T.append` " = " `T.append` compile' info indent rhs
 
-compile' 0 (ASTAlloc _ name (Just val@(ASTNew _ _))) =
+compile' info 0 (ASTAlloc _ name (Just val@(ASTNew _ _))) =
   T.pack name
   `T.append` " = "
-  `T.append` compile' 0 val
+  `T.append` compile' info 0 val
   `T.append` ";\n"
 
-compile' indent (ASTAlloc typename name val) =
-    case val of Nothing   -> typ `T.append` T.pack name
-                Just expr -> typ `T.append` T.pack name `T.append` " = " `T.append` compile' indent expr
-                where
-                  typ = case typename of Nothing -> T.pack "auto "
-                                         Just t  -> T.pack (t ++ " ")
-    -- let expr = maybe "" (compile' indent) val
-    -- in case val of (Nothing)               -> ""
-    --                (Just (ASTFunction _ _)) -> (if name == "main" then "int " else "void ")
-    --                                             `T.append` T.pack name `T.append`  expr
-    --                (_)                       -> "auto " `T.append` T.pack name `T.append` " = " `T.append` expr
+compile' info indent alloc@(ASTAlloc typename name val) = compileAlloc info indent alloc
 
-compile' indent (ASTIndex lhs rhs) =
-    compile' indent lhs
+compile' info indent (ASTIndex lhs rhs) =
+    compile' info indent lhs
   `T.append` "["
-  `T.append` compile' indent rhs
+  `T.append` compile' info indent rhs
   `T.append` "]"
 
-compile' indent (ASTCond branches) =
+compile' info indent (ASTCond branches) =
   T.intercalate " else " $ map createIfBlock branches
   where
     createIfBlock (ASTNoop, e@(ASTSeq _)) =
          "{\n"
-      `T.append` compile' (indent + 2) e
+      `T.append` compile' info (indent + 2) e
       `T.append` "\n" `T.append` T.replicate indent " " `T.append` "}"
     createIfBlock (ASTNoop, e) =
          "{\n"
-      `T.append` compile' (indent + 2) e
+      `T.append` compile' info (indent + 2) e
       `T.append` ";\n" `T.append` T.replicate indent " " `T.append` "}"
     createIfBlock (cond, e@(ASTSeq _)) =
-         "if (" `T.append` compile' indent cond `T.append`") {\n"
-      `T.append` compile' (indent + 2) e
+         "if (" `T.append` compile' info indent cond `T.append`") {\n"
+      `T.append` compile' info (indent + 2) e
       `T.append` "\n" `T.append` T.replicate indent " " `T.append` "}"
     createIfBlock (cond, e) =
-         "if (" `T.append` compile' indent cond `T.append`") {\n"
+         "if (" `T.append` compile' info indent cond `T.append`") {\n"
       `T.append` T.replicate (indent + 2) " "
-      `T.append` compile' (indent + 2) e
+      `T.append` compile' info (indent + 2) e
       `T.append` ";\n"
       `T.append` T.replicate indent " "
       `T.append` "}"
 
-compile' indent (ASTSwitch val [(_,ASTSeq seq)] Nothing) =
+compile' info indent (ASTSwitch val [(_,ASTSeq seq)] Nothing) =
   let (h,t) = splitAt 1 seq in
-         (T.concat (map (compile' indent) h) `T.append` ";\n")
+         (T.concat (map (compile' info indent) h) `T.append` ";\n")
       `T.append` (
         T.intercalate ";\n" $ map (
-          (T.replicate indent " " `T.append`) . compile' indent
+          (T.replicate indent " " `T.append`) . compile' info indent
         ) t
       )
 
-compile' indent (ASTSwitch val branches def) =
-     "switch (" `T.append` compile' indent val `T.append` ") {\n"
+compile' info indent (ASTSwitch val branches def) =
+     "switch (" `T.append` compile' info indent val `T.append` ") {\n"
   `T.append` T.concat (map mkBranch branches)
   `T.append` mkDefault def
   `T.append` T.replicate indent " " `T.append` "}"
@@ -284,9 +274,9 @@ compile' indent (ASTSwitch val branches def) =
     mkBranch (tag, code) =
          T.replicate (indent + 2) " "
       `T.append` "case "
-      `T.append` compile' indent tag
+      `T.append` compile' info indent tag
       `T.append` ":\n"
-      `T.append` compile' (indent + 4) code
+      `T.append` compile' info (indent + 4) code
       `T.append` "\n" `T.append` T.replicate (indent + 2) " " `T.append` "break;\n"
       `T.append` (T.replicate (indent + 4) " " `T.append` "\n")
 
@@ -294,13 +284,13 @@ compile' indent (ASTSwitch val branches def) =
     mkDefault Nothing = ""
     mkDefault (Just def) =
          T.replicate (indent + 2) " " `T.append` "default:\n"
-      `T.append` compile' (indent + 4)def
+      `T.append` compile' info (indent + 4)def
       `T.append` "\n" `T.append` T.replicate (indent + 2) " " `T.append` "break;\n"
 
-compile' indent (ASTTernary cond true false) =
-  let c = compile' indent cond
-      t = compile' indent true
-      f = compile' indent false in
+compile' info indent (ASTTernary cond true false) =
+  let c = compile' info indent cond
+      t = compile' info indent true
+      f = compile' info indent false in
         "("
       `T.append` c
       `T.append` ")?("
@@ -309,19 +299,19 @@ compile' indent (ASTTernary cond true false) =
       `T.append` f
       `T.append` ")"
 
-compile' indent (ASTParens expr) =
-  "(" `T.append` compile' indent expr `T.append` ")"
+compile' info indent (ASTParens expr) =
+  "(" `T.append` compile' info indent expr `T.append` ")"
 
-compile' indent (ASTWhile cond body) =
-     "while (" `T.append` compile' indent cond `T.append` ") {\n"
-  `T.append` compile' (indent + 2) body
+compile' info indent (ASTWhile cond body) =
+     "while (" `T.append` compile' info indent cond `T.append` ") {\n"
+  `T.append` compile' info (indent + 2) body
   `T.append` "\n" `T.append` T.replicate indent " " `T.append` "}"
 
-compile' indent (ASTWord word)
-  | ASTWord8  b <- word = compile' indent (fromInt b)
-  | ASTWord16 b <- word = compile' indent (fromInt b)
-  | ASTWord32 b <- word = compile' indent (fromInt b)
-  | ASTWord64 b <- word = compile' indent (fromBigInt b)
+compile' info indent (ASTWord word)
+  | ASTWord8  b <- word = compile' info indent (fromInt b)
+  | ASTWord16 b <- word = compile' info indent (fromInt b)
+  | ASTWord32 b <- word = compile' info indent (fromInt b)
+  | ASTWord64 b <- word = compile' info indent (fromBigInt b)
     where
       fromInt n = ASTNum $ ASTInt (fromIntegral n)
       fromBigInt n = ASTNum . ASTInteger . ASTBigInt $ fromIntegral n
