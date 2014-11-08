@@ -378,7 +378,8 @@ instance CompileInfo CompileCpp where
 
           LStrRev   -> mkBox stringTy $ mkCall "reverse" [mkUnbox stringTy $ translateReg arg]
 
-          LStrIndex -> mkBox charTy $ mkCall "char32_from_utf8_string" [unboxedString lhs,                                                                            mkAsIntegral $ translateReg rhs]
+          LStrIndex -> mkBox charTy $ mkCall "char32_from_utf8_string" [unboxedString lhs,
+                                                                        mkAsIntegral $ translateReg rhs]
 
           LStrTail  -> let str = unboxedString arg in
                        ASTTernary (mkAnd (translateReg arg) (mkGreaterThan (strLen str) mkOne))
