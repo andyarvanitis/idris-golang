@@ -442,7 +442,6 @@ myoldbase = "myoldbase"
 mkVm        = ASTIdent vm
 mkStack     = ASTPtrProj mkVm "valstack"
 mkCallstack = ASTPtrProj mkVm "callstack"
-mkArgstack  = ASTPtrProj mkVm "argstack"
 mkStackbase = ASTPtrProj mkVm "valstack_base"
 mkStacktop  = ASTPtrProj mkVm "valstack_top"
 mkRet       = ASTPtrProj mkVm "ret"

@@ -29,7 +29,7 @@ import qualified Data.Text.IO as TIO
 import qualified Text.Printf as PF
 
 getDataDir :: IO String
-getDataDir = return ("/Users/andy/Idris/gorts")-- TODO: temporary
+getDataDir = return ("/Users/andy/Projects/Idris/idris-cplusplus/gorts")-- TODO: temporary
 
 -- TODO: better way to do this?
 #if defined(MACOSX) || defined(FREEBSD)
@@ -78,13 +78,15 @@ codegenGo_all definitions outputType filename includes objs libs flags dbg = do
   let (header, rt) = ("", "")
   path <- getDataDir
   let cppout = (  T.pack "package main\n\n" -- (headers includes)
-                  `T.append` "import . \"reflect\"\n"
-                  `T.append` "import . \"strconv\"\n"
-                  `T.append` "import . \"math\"\n"
+                  `T.append` mkImport "reflect"
+                  `T.append` mkImport "strconv"
+                  `T.append` mkImport "math"
+                  `T.append` mkImport "idris_runtime"
                   `T.append` "\n\n"
                   -- `T.append` namespaceBegin
                   -- `T.append` T.pack decls
                   `T.append` T.concat (map (compile info) go)
+                  `T.append` "\nfunc main () {\n  vm := VirtualMachine{}\n  Call(&vm, _idris__123_runMain0_125_, 0)\n}\n"
                   -- `T.append` namespaceEnd
                )
   case outputType of
@@ -143,10 +145,13 @@ codegenGo_all definitions outputType filename includes objs libs flags dbg = do
       namespaceEnd :: T.Text
       namespaceEnd = T.pack "} // namespace idris\n"
 
+      mkImport :: String -> T.Text
+      mkImport pkg = T.pack $ PF.printf "import . \"%s\"\n" pkg
+
 toGo info (name, bc) =
   [ ASTIdent $ "func " ++ translateName name,
     ASTFunction fnParams (
-      ASTSeq $ ASTAlloc (Just baseType) myoldbase Nothing
+      ASTSeq $ ASTAlloc (Just baseType) myoldbase (Just mkZero)
                : map (translateBC info)bc
     )
   ]
@@ -172,9 +177,9 @@ instance CompileInfo CompileGo where
 
   mkNullAssign _ r = ASTAssign (translateReg r) mkNull
 
-  mkVmCall _ n = mkCall "vm_call" [mkVm, ASTIdent (translateName n), mkMyOldbase]
+  mkVmCall _ n = mkCall "Call" [mkVm, ASTIdent (translateName n), mkMyOldbase]
 
-  mkVmTailCall _ n = mkCall "vm_tailcall" [mkVm, ASTIdent (translateName n), mkOldbase]
+  mkVmTailCall _ n = mkCall "TailCall" [mkVm, ASTIdent (translateName n), mkOldbase]
 
   mkForeign info reg n args ret =
     case n of
@@ -255,14 +260,14 @@ instance CompileInfo CompileGo where
 
   mkStoreOld _ = ASTAssign mkMyOldbase mkStackbase
 
-  mkSlide _ n = mkCall "slide" [mkVm, ASTNum (ASTInt n)]
+  mkSlide _ n = mkCall "Slide" [mkVm, ASTNum (ASTInt n)]
 
   mkRebase _ = ASTAssign mkStackbase mkOldbase
 
-  mkReserve _ n = mkCall "reserve" [mkVm, mkAdd mkStacktop (ASTNum $ ASTInt n)]
+  mkReserve _ n = mkCall "Reserve" [mkVm, mkAdd mkStacktop (ASTNum $ ASTInt n)]
 
   mkMakeCon info r t rs = 
-    ASTAssign (translateReg r) (mkCall conTy [ASTList $ ASTNum (ASTInt t) : args rs])
+    ASTAssign (translateReg r) (mkCall "MakeCon" [ASTList $ ASTNum (ASTInt t) : args rs])
       where
         args [] = []
         args xs = [ASTList (map translateReg xs)]
@@ -290,16 +295,13 @@ instance CompileInfo CompileGo where
         prepBranch :: [BC] -> ASTNode
         prepBranch bc = ASTSeq $ map (translateBC info) bc
 
-        mkTag expr =
-          (ASTTernary (mkIsCon expr) (
-            ASTProj (mkUnbox conTy expr) "tag"
-          ) (ASTNum (ASTInt $ negate 1)))
+        mkTag expr = ASTProj (mkUnbox conTy expr) "Tag"
 
         mkCTag :: ASTNode -> ASTNode
-        mkCTag expr = ASTProj (mkUnbox conTy expr) "tag"
+        mkCTag expr = ASTProj (mkUnbox conTy expr) "Tag"
 
   mkProject _ reg loc 0  = ASTNoop
-  mkProject _ reg loc ar = mkCall "project" [mkVm, translateReg reg, ASTNum (ASTInt loc), ASTNum (ASTInt ar)]
+  mkProject _ reg loc ar = mkCall "Project" [mkVm, translateReg reg, ASTNum (ASTInt loc), ASTNum (ASTInt ar)]
 
   mkOp _ reg oper args = ASTAssign (translateReg reg) (mkOp' oper)
     where
@@ -431,12 +433,11 @@ oldbase   = "oldbase"
 myoldbase = "myoldbase"
 
 mkVm        = ASTIdent vm
-mkStack     = ASTPtrProj mkVm "valstack"
-mkCallstack = ASTPtrProj mkVm "callstack"
-mkArgstack  = ASTPtrProj mkVm "argstack"
-mkStackbase = ASTPtrProj mkVm "valstack_base"
-mkStacktop  = ASTPtrProj mkVm "valstack_top"
-mkRet       = ASTPtrProj mkVm "ret"
+mkStack     = ASTPtrProj mkVm "ValueStack"
+mkCallstack = ASTPtrProj mkVm "CallStack"
+mkStackbase = ASTPtrProj mkVm "ValueStackBase"
+mkStacktop  = ASTPtrProj mkVm "ValueStackTop"
+mkRet       = ASTPtrProj mkVm "ReturnValue"
 mkOldbase   = ASTIdent oldbase
 mkMyOldbase = ASTIdent myoldbase
 mkNull      = ASTIdent nullptr
@@ -450,8 +451,8 @@ mkTop n = ASTIndex mkStack (mkAdd mkStacktop (ASTNum (ASTInt n)))
 mkPush args = ASTApp (ASTProj mkCallstack "push") args
 mkPop       = ASTBinOp ";" (mkMeth mkCallstack "top" []) (mkMeth mkCallstack "pop" [])
 
-mkIsCon :: ASTNode -> ASTNode
-mkIsCon obj = mkAnd obj (mkEq (mkPtrMeth obj "getTypeId" []) (ASTIdent "Con::typeId"))
+-- mkIsCon :: ASTNode -> ASTNode
+-- mkIsCon obj = mkAnd obj (mkEq (mkPtrMeth obj "getTypeId" []) (ASTIdent "Con::typeId"))
 
 fnParams :: [String]
 fnParams = [vm ++ " *VirtualMachine", oldbase ++ " " ++ baseType]
