@@ -40,6 +40,7 @@ class CompileInfo a where
   mkOp :: a -> Reg -> PrimFn -> [Reg] -> ASTNode
   mkError :: a -> String -> ASTNode
   compileAlloc :: a -> Int -> ASTNode -> T.Text
+  compileError :: a -> Int -> ASTNode -> T.Text
 
 translateConstant :: Const -> ASTNode
 translateConstant (I i)                    = ASTNum (ASTInt i)
@@ -163,7 +164,7 @@ compile' info indent (ASTNew name args) =
   `T.append` T.intercalate "," (map (compile' info 0) args)
   `T.append` ")"
 
-compile' info indent (ASTError exc) = compile info (mkCall "putStr" [ASTString exc]) `T.append` "; assert(false)"
+compile' info indent err@(ASTError _) = compileError info indent err
 
 compile' info indent (ASTBinOp op lhs rhs) =
     compile' info indent lhs

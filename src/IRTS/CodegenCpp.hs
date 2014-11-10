@@ -432,6 +432,9 @@ instance CompileInfo CompileCpp where
                 where
                   typ = case typename of Nothing -> T.pack "auto "
                                          Just t  -> T.pack (t ++ " ")
+
+  compileError info indent (ASTError exc) = compile info (mkCall "puts" [ASTString exc])
+
 -------------------------------------------------------------------------------
 
 vm        = "vm"

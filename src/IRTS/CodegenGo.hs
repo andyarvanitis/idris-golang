@@ -79,14 +79,15 @@ codegenGo_all definitions outputType filename includes objs libs flags dbg = do
   path <- getDataDir
   let cppout = (  T.pack "package main\n\n" -- (headers includes)
                   `T.append` mkImport "reflect"
-                  `T.append` mkImport "strconv"
+                  `T.append` mkImport "fmt"
                   `T.append` mkImport "math"
                   `T.append` mkImport "idris_runtime"
                   `T.append` "\n\n"
                   -- `T.append` namespaceBegin
                   -- `T.append` T.pack decls
                   `T.append` T.concat (map (compile info) go)
-                  `T.append` "\nfunc main () {\n  vm := VirtualMachine{}\n  Call(&vm, _idris__123_runMain0_125_, 0)\n}\n"
+                  `T.append` "\nvar _ Scanner; var _ = Pi // ignore unused imports\n\n"
+                  `T.append` "func main () {\n  vm := VirtualMachine{}\n  Call(&vm, _idris__123_runMain0_125_, 0)\n}\n"
                   -- `T.append` namespaceEnd
                )
   case outputType of
@@ -151,7 +152,8 @@ codegenGo_all definitions outputType filename includes objs libs flags dbg = do
 toGo info (name, bc) =
   [ ASTIdent $ "func " ++ translateName name,
     ASTFunction fnParams (
-      ASTSeq $ ASTAlloc (Just baseType) myoldbase (Just mkZero)
+      ASTSeq $ ASTAlloc (Just baseType) myoldbase Nothing
+               : ASTAssign (ASTIdent "_") mkMyOldbase
                : map (translateBC info)bc
     )
   ]
@@ -183,6 +185,10 @@ instance CompileInfo CompileGo where
 
   mkForeign info reg n args ret =
     case n of
+      "putStr" -> let [(_, str)] = args in
+                   ASTAssign (translateReg reg) 
+                             (ASTBinOp ";" mkNull (mkCall "Print" [mkUnbox stringTy $ translateReg str]))
+
       "fileOpen" -> let [(_, name),(_, mode)] = args in
                     ASTAssign (translateReg reg)
                               (mkCall "fileOpen" [mkUnbox stringTy $ translateReg name,
@@ -210,7 +216,7 @@ instance CompileInfo CompileGo where
 
       _ -> ASTAssign (translateReg reg) (let callexpr = ASTFFI n (map generateWrapper args) in
                                          case ret of
-                                           FUnit -> ASTBinOp "," mkNull callexpr
+                                           FUnit -> ASTBinOp ";" mkNull callexpr
                                            _     -> callexpr)
       where
         generateWrapper :: (FType, Reg) -> ASTNode
@@ -425,6 +431,9 @@ instance CompileInfo CompileGo where
                 where
                   decl = case typename of Nothing -> T.pack ("var " ++ name)
                                           Just t  -> T.pack ("var " ++ name ++ " " ++ t)
+
+  compileError info indent (ASTError exc) = compile info (mkCall "Println" [ASTString exc])
+
 -------------------------------------------------------------------------------
 
 vm        = "vm"
@@ -474,10 +483,10 @@ unboxedType e = case e of
                   _                                   -> ""
 
 mkAsString :: ASTNode -> ASTNode
-mkAsString obj = mkPtrMeth obj "asString" []
+mkAsString obj = mkMeth (mkCall "ValueOf" [obj]) "String" []
 
 mkAsIntegral :: ASTNode -> ASTNode
-mkAsIntegral obj = mkPtrMeth obj "asIntegral" []
+mkAsIntegral obj = mkMeth (mkCall "ValueOf" [obj]) "Int" []
 
 mkCast :: String -> ASTNode -> ASTNode
 mkCast typ expr = mkCall typ [expr]
