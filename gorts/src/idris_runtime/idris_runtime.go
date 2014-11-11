@@ -18,14 +18,32 @@ type CallPair struct {
 
 
 type Con struct {
-  Tag uintptr
+  tag uintptr
   args []interface{}
 }
 
 func MakeCon(tag uintptr, args ...interface{}) Con {
-  return Con{Tag: tag, args: args}
+  return Con{tag, args}
 }
 
+const invalidTag = ^uintptr(0)
+
+func GetTag(con interface{}) uintptr {
+  if con != nil {
+    return ValueOf(con).Interface().(Con).tag
+  } else {
+    return invalidTag
+  }
+}
+
+
+func BoolToInt(isTrue bool) int {
+  if isTrue {
+    return 1
+  } else {
+    return 0
+  }
+}
 
 func Slide(vm *VirtualMachine, num_args uintptr) {
   for i := uintptr(0); i < num_args; i++ {
@@ -41,18 +59,14 @@ func Project(vm *VirtualMachine, value interface{}, loc uintptr, arity uintptr) 
 }
 
 func Reserve(vm *VirtualMachine, size uintptr) {
-  newsize := size - uintptr(len((*vm).ValueStack))
-  if newsize == 1 {
+  for i := uintptr(len((*vm).ValueStack)); i < size; i++ {
     (*vm).ValueStack = append((*vm).ValueStack, nil)
-  } else if newsize > 1 {
-    (*vm).ValueStack = append((*vm).ValueStack, make([]interface{}, newsize))
   }
 }
 
 func Call(vm *VirtualMachine, fn func(vm *VirtualMachine, oldbase uintptr), base uintptr) {
   fn(vm, base)
-  length := len((*vm).CallStack)
-  for length > 0 {
+  for length := len((*vm).CallStack); length > 0; length = len((*vm).CallStack) {
     top := (*vm).CallStack[length - 1]
     function := top.fn
     base := top.base

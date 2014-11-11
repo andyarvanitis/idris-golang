@@ -305,6 +305,7 @@ instance CompileInfo CompileCpp where
           LNoOp -> translateReg (last args)
 
           (LZExt sty dty) -> boxedIntegral dty $ unboxedIntegral sty (last args)
+          (LSExt ITNative ITBig) -> mkBox bigIntTy $ mkUnbox intTy $ translateReg arg
 
           (LPlus ty)  -> mkNumBinOp ty mkAdd      lhs rhs
           (LMinus ty) -> mkNumBinOp ty mkSubtract lhs rhs
@@ -347,7 +348,6 @@ instance CompileInfo CompileCpp where
 
           (LStrInt ITNative)     -> mkBox intTy $ mkCall "stoi" [mkUnbox stringTy $ translateReg arg]
           (LIntStr ITNative)     -> mkBox stringTy $ mkAsString $ translateReg arg
-          (LSExt ITNative ITBig) -> mkBox bigIntTy $ mkUnbox intTy $ translateReg arg
           (LIntStr ITBig)        -> mkBox stringTy $ mkAsString $ translateReg arg
           (LStrInt ITBig)        -> mkBox bigIntTy $ mkCall "stoll" [mkUnbox stringTy $ translateReg arg]
           LFloatStr              -> mkBox stringTy $ mkAsString $ translateReg arg
