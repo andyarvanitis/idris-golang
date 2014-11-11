@@ -1,12 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE CPP #-}
 
 module IRTS.CodegenGo (codegenGo) where
 
 import IRTS.Bytecode
 import IRTS.Lang
 import IRTS.Simplified
-import IRTS.System hiding (getDataDir)
 import IRTS.CodegenCommon
 import IRTS.AST
 import IRTS.CodegenGeneric
@@ -27,18 +25,6 @@ import Control.Arrow
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Text.Printf as PF
-
-getDataDir :: IO String
-getDataDir = return ("/Users/andy/Projects/Idris/idris-cplusplus/gorts")-- TODO: temporary
-
--- TODO: better way to do this?
-#if defined(MACOSX) || defined(FREEBSD)
-ccStandard = "-std=c++11 -stdlib=libc++"
-libStandard = "-lc++"
-#else
-ccStandard = "-std=c++11 -stdlib=libstdc++"
-libStandard = "-lstdc++"
-#endif
 
 data CompileGo = CompileGo Bool -- TODO: just a placeholder
 
@@ -73,11 +59,8 @@ codegenGo_all ::
 codegenGo_all definitions outputType filename includes objs libs flags dbg = do
   let info = CompileGo True
   let bytecode = map toBC definitions
-  let decls = concatMap toDecl (map fst bytecode)
   let go = concatMap (toGo info) bytecode
-  let (header, rt) = ("", "")
-  path <- getDataDir
-  let cppout = (  T.pack "package main\n\n" -- (headers includes)
+  let cppout = (  T.pack "package main\n\n"
                   `T.append` mkImport "reflect"
                   `T.append` mkImport "strconv"
                   `T.append` mkImport "unicode/utf8"
@@ -85,12 +68,9 @@ codegenGo_all definitions outputType filename includes objs libs flags dbg = do
                   `T.append` mkImport "math"
                   `T.append` mkImport "idris_runtime"
                   `T.append` "\n\n"
-                  -- `T.append` namespaceBegin
-                  -- `T.append` T.pack decls
                   `T.append` T.concat (map (compile info) go)
                   `T.append` suppressImportWarnings
                   `T.append` mainFunction
-                  -- `T.append` namespaceEnd
                )
   case outputType of
     Raw -> TIO.writeFile filename cppout
@@ -98,56 +78,14 @@ codegenGo_all definitions outputType filename includes objs libs flags dbg = do
             hPutStr tmph (T.unpack cppout)
             hFlush tmph
             hClose tmph
-            comp <- getCC
-            libFlags <- getLibFlags
-            incFlags <- getIncFlags
-            let cc = comp ++ " " ++
-                    ccStandard ++ " " ++
-                    ccDbg dbg ++ " " ++
-                    ccFlags ++
-                    " -I " ++ path ++ "/include" ++
-                    " -I. " ++ objs ++ " -x c++ " ++
-                    (if (outputType == Executable) then "" else " -c ") ++
-                    " " ++ tmpn ++
-                    " " ++ libStandard ++ " " ++
-                    " -L " ++ path ++ "/lib" ++
-                    " " ++ libRuntime ++ " " ++
-                    " " ++ libFlags ++
-                    " " ++ incFlags ++
-                    " " ++ libs ++
-                    " " ++ flags ++
-                    " -o " ++ filename
+            let cc = "mkdir " ++ tmpn ++ "_; " ++
+                     "mv " ++ tmpn ++ " " ++ tmpn ++ "_/main.go; " ++
+                     "go build " ++ tmpn ++ "_/main.go; " ++
+                     "mv main " ++ filename
             exit <- system cc
             when (exit /= ExitSuccess) $
               putStrLn ("FAILURE: " ++ cc)
     where
-      headers xs = concatMap (\h -> let header = case h of ('<':_) -> h
-                                                           _ -> "\"" ++ h ++ "\"" in
-                                    "#include " ++ header ++ "\n")
-                             (xs ++ ["idris_runtime.h"])
-
-      debug TRACE = "#define IDRIS_TRACE\n\n"
-      debug _ = ""
-
-      -- We're using signed integers now. Make sure we get consistent semantics
-      -- out of them from cc. See e.g. http://thiemonagel.de/2010/01/signed-integer-overflow/
-      ccFlags = " -fwrapv -fno-strict-overflow"
-
-      libRuntime = "-lidris_cpp_rts"
-
-      ccDbg DEBUG = "-g"
-      ccDbg TRACE = "-O2"
-      ccDbg _ = "-O2 -DNDEBUG -ftree-vectorize -fno-rtti -fno-exceptions -fomit-frame-pointer"
-
-      toDecl :: Name -> String
-      toDecl f = "void " ++ translateName f ++ "(" ++ (intercalate ", " fnParams) ++ ");\n"
-
-      namespaceBegin :: T.Text
-      namespaceBegin = T.pack "namespace idris {\n"
-
-      namespaceEnd :: T.Text
-      namespaceEnd = T.pack "} // namespace idris\n"
-
       mkImport :: String -> T.Text
       mkImport pkg = T.pack $ PF.printf "import . \"%s\"\n" pkg
 
