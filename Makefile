@@ -21,6 +21,7 @@ test_go:
 lib_clean:
 clean:
 	$(MAKE) -C cpprts clean
+	$(MAKE) -C gorts clean
 
 dist/setup-config:
 	$(CABAL) configure $(CABALFLAGS)

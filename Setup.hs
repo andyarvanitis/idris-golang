@@ -25,35 +25,38 @@ make verbosity =
    P.runProgramInvocation verbosity . P.simpleProgramInvocation mymake
 
 
-idrisCppClean _ flags _ _ = do
+idrisRuntimeClean _ flags _ _ = do
         make verbosity [ "-C", "cpprts", "clean", "IDRIS=idris" ]
+        make verbosity [ "-C", "gorts", "clean", "IDRIS=idris" ]
     where
         verbosity = S.fromFlag $ S.cleanVerbosity flags
 
-idrisCppInstall verbosity copy pkg local = do
-        installCppRTS
+idrisRuntimeInstall verbosity copy pkg local = do
+        installRTS
     where
         target = datadir $ L.absoluteInstallDirs pkg local copy
-        installCppRTS = do
-            let target' = target </> "cpprts"
+        installRTS = do
             putStrLn $ "Installing c++ runtime in " ++ target
             makeInstall "cpprts" target
+            makeInstall "gorts" target
         makeInstall src target =
             make verbosity [ "-C", src, "install", "TARGET=" ++ target ]
 
-idrisCppBuild _ flags _ local = do
+idrisRuntimeBuild _ flags _ local = do
         buildCpp
+        buildGo
     where
         verbosity = S.fromFlag $ S.buildVerbosity flags
         buildCpp = make verbosity ["-C", "cpprts", "build"]
+        buildGo = make verbosity ["-C", "gorts", "build"]
 
 main = defaultMainWithHooks $ simpleUserHooks
-    { postClean = idrisCppClean
-    , postBuild = idrisCppBuild
+    { postClean = idrisRuntimeClean
+    , postBuild = idrisRuntimeBuild
     , postCopy = \_ flags pkg local ->
-                   idrisCppInstall (S.fromFlag $ S.copyVerbosity flags)
+                   idrisRuntimeInstall (S.fromFlag $ S.copyVerbosity flags)
                                    (S.fromFlag $ S.copyDest flags) pkg local
     , postInst = \_ flags pkg local ->
-                   idrisCppInstall (S.fromFlag $ S.installVerbosity flags)
+                   idrisRuntimeInstall (S.fromFlag $ S.installVerbosity flags)
                                    NoCopyDest pkg local
     }

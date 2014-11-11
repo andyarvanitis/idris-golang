@@ -22,7 +22,7 @@ $(LIBTARGET) : $(OBJS)
 	ranlib $(LIBTARGET)
 
 install :
-	mkdir -p $(TARGET)/include $(TARGET)/lib
+	install -d $(TARGET)/include $(TARGET)/lib
 	install $(HDRS) $(TARGET)/include/
 	install $(LIBTARGET) $(TARGET)/lib/
 

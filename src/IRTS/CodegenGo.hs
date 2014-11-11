@@ -26,6 +26,8 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Text.Printf as PF
 
+import Paths_idris_cpp
+
 data CompileGo = CompileGo Bool -- TODO: just a placeholder
 
 codegenGo :: CodeGenerator
@@ -60,7 +62,8 @@ codegenGo_all definitions outputType filename includes objs libs flags dbg = do
   let info = CompileGo True
   let bytecode = map toBC definitions
   let go = concatMap (toGo info) bytecode
-  let cppout = (  T.pack "package main\n\n"
+  path <- getDataDir
+  let goout = (  T.pack "package main\n\n"
                   `T.append` mkImport "reflect"
                   `T.append` mkImport "strconv"
                   `T.append` mkImport "unicode/utf8"
@@ -73,14 +76,15 @@ codegenGo_all definitions outputType filename includes objs libs flags dbg = do
                   `T.append` mainFunction
                )
   case outputType of
-    Raw -> TIO.writeFile filename cppout
+    Raw -> TIO.writeFile filename goout
     _ -> do (tmpn, tmph) <- tempfile
-            hPutStr tmph (T.unpack cppout)
+            hPutStr tmph (T.unpack goout)
             hFlush tmph
             hClose tmph
-            let cc = "mkdir " ++ tmpn ++ "_; " ++
-                     "mv " ++ tmpn ++ " " ++ tmpn ++ "_/main.go; " ++
-                     "go build " ++ tmpn ++ "_/main.go; " ++
+            let cc =
+                     "GOPATH=${GOPATH}:" ++ path ++ "; " ++
+                     "mv " ++ tmpn ++ " " ++ path ++ "/src/main/main.go; " ++
+                     "go build main; " ++
                      "mv main " ++ filename
             exit <- system cc
             when (exit /= ExitSuccess) $
