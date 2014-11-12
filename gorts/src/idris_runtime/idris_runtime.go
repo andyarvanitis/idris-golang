@@ -1,6 +1,8 @@
 package idris_runtime
 
 import . "reflect"
+import . "os"
+import "bufio"
 
 
 type VirtualMachine struct {
@@ -77,4 +79,29 @@ func Call(vm *VirtualMachine, fn func(vm *VirtualMachine, oldbase uintptr), base
 
 func TailCall(vm *VirtualMachine, fn func(vm *VirtualMachine, oldbase uintptr), base uintptr) {
    (*vm).CallStack = append((*vm).CallStack, CallPair{fn, base})
+}
+
+
+func FileOpen(name string, mode string) *File {
+  flags := 0
+  for char := range mode { // TODO: these need some work
+    switch char {
+      case 'r': flags |= O_RDONLY
+      case 'w': flags |= O_RDWR|O_TRUNC|O_CREATE
+      case 'a': flags |= O_APPEND|O_CREATE
+      case '+': flags |= O_RDWR
+    }
+    if flags & (O_RDWR|O_APPEND) != 0 {
+      flags &^= O_RDONLY
+    }
+  }
+  file, _ := OpenFile(name, flags, 0)
+  return file
+}
+
+
+func FileReadLine(file *File) string {
+  reader := bufio.NewReader(file)
+  line, _ := reader.ReadString('\n')
+  return line
 }

@@ -65,15 +65,18 @@ codegenGo_all definitions outputType filename includes objs libs flags dbg = do
   path <- getDataDir
   let goout = (  T.pack "package main\n\n"
                   `T.append` mkImport "reflect"
+                  `T.append` mkImport "os"
                   `T.append` mkImport "strconv"
                   `T.append` mkImport "unicode/utf8"
                   `T.append` mkImport "fmt"
                   `T.append` mkImport "math"
                   `T.append` mkImport "idris_runtime"
-                  `T.append` "\n\n"
+                  `T.append` "\n"
                   `T.append` T.concat (map (compile info) go)
-                  `T.append` suppressImportWarnings
-                  `T.append` mainFunction
+                  `T.append` mkIgnoreUnusedImports
+                  `T.append` "\n"
+                  `T.append` mkMain
+                  `T.append` "\n"
                )
   case outputType of
     Raw -> TIO.writeFile filename goout
@@ -93,12 +96,13 @@ codegenGo_all definitions outputType filename includes objs libs flags dbg = do
       mkImport :: String -> T.Text
       mkImport pkg = T.pack $ PF.printf "import . \"%s\"\n" pkg
 
-      suppressImportWarnings =
-        "\nvar _ = IntSize; var _ = UTFMax; var _ Scanner; var _ = Pi // ignore unused imports\n\n"
+      mkIgnoreUnusedImports = T.pack $ foldr (++) "\n" (map ("\nconst _ = " ++) consts)
+        where consts = ["IntSize", "UTFMax", "Pi", "DevNull"]
 
-      mainFunction =
-        "func main () {\n  vm := VirtualMachine{}\n  Call(&vm, _idris__123_runMain0_125_, 0)\n}\n"
-
+      mkMain = T.pack $ "func main () {\n" ++
+                        "  vm := VirtualMachine{}\n" ++
+                        "  Call(&vm, _idris__123_runMain0_125_, 0)\n" ++
+                        "}\n"
 toGo info (name, bc) =
   [ ASTIdent $ "func " ++ translateName name,
     ASTFunction fnParams (
@@ -122,7 +126,7 @@ instance CompileInfo CompileGo where
   mkAssign _ r1 r2 = ASTAssign (translateReg r1) (translateReg r2)
 
   mkAssignConst _ r c = let value = translateConstant c in
-                        ASTAssign (translateReg r) (mkCall (unboxedType value) [value])
+                        ASTAssign (translateReg r) (mkCast (translatedType value) value)
 
   mkAddTop info n = case n of
                       0 -> ASTNoop
@@ -142,19 +146,19 @@ instance CompileInfo CompileGo where
 
       "fileOpen" -> let [(_, name),(_, mode)] = args in
                     ASTAssign (translateReg reg)
-                              (mkCall "fileOpen" [mkUnbox stringTy $ translateReg name,
+                              (mkCall "FileOpen" [mkUnbox stringTy $ translateReg name,
                                                   mkUnbox stringTy $ translateReg mode])
       "fileClose" -> let [(_, fh)] = args in
-                     ASTAssign (translateReg reg) (mkCall "fileClose" [mkUnbox managedPtrTy $ translateReg fh])
+                     ASTAssign (translateReg reg) (mkMeth (mkUnbox fileTy $ translateReg fh) "Close" [])
 
       "fputStr" -> let [(_, fh),(_, str)] = args in
-                   ASTAssign (translateReg reg) (mkCall "fputStr" [mkUnbox managedPtrTy $ translateReg fh,
-                                                                    mkUnbox stringTy $ translateReg str])
-      "fileEOF" -> let [(_, fh)] = args in
-                   ASTAssign (translateReg reg) (mkCall "fileEOF" [mkUnbox managedPtrTy $ translateReg fh])
+                   ASTAssign (translateReg reg) 
+                             (mkMeth (mkUnbox fileTy $ translateReg fh) 
+                                     "WriteString" 
+                                     [mkUnbox stringTy $ translateReg str])
 
-      "fileError" -> let [(_, fh)] = args in
-                     ASTAssign (translateReg reg) (mkCall "fileError" [mkUnbox managedPtrTy $ translateReg fh])
+      "fileEOF" -> let [(_, fh)] = args in error "fileEOF not supported yet"
+      "fileError" -> let [(_, fh)] = args in error "fileError not supported yet"
 
       "isNull" -> let [(_, arg)] = args in
                   ASTAssign (translateReg reg) (mkBoolToInt $ mkEq (translateReg arg) mkNull)
@@ -163,7 +167,7 @@ instance CompileInfo CompileGo where
                     ASTAssign (translateReg reg) (mkBoolToInt $ mkEq (translateReg lhs) (translateReg rhs))
 
       "getenv" -> let [(_, arg)] = args in
-                  ASTAssign (translateReg reg) (mkCall "getenv" [mkMeth (mkUnbox stringTy $ translateReg arg) "c_str" []])
+                  ASTAssign (translateReg reg) (mkCall "Getenv" [mkUnbox stringTy $ translateReg arg])
 
       _ -> ASTAssign (translateReg reg) (let callexpr = ASTFFI n (map generateWrapper args) in
                                          case ret of
@@ -188,7 +192,7 @@ instance CompileInfo CompileGo where
         cType FString = ASTIdent "string"
         cType FUnit = ASTIdent "void"
         cType FPtr = ASTIdent "void*"
-        cType FManagedPtr = ASTIdent "shared_ptr<void>"
+        cType FManagedPtr = ASTIdent "*interface{}" -- TODO: placeholder
         cType (FArith ATFloat) = ASTIdent "double"
         cType FAny = ASTIdent "void*"
         cType (FFunction a b) = ASTList [cType a, cType b]
@@ -238,7 +242,7 @@ instance CompileInfo CompileGo where
         prepBranch bc = ASTSeq $ map (translateBC info) bc
 
         unboxedBinOp :: (ASTNode -> ASTNode -> ASTNode) -> ASTNode -> ASTNode -> ASTNode
-        unboxedBinOp f l r = f (mkUnbox (unboxedType r) l) r
+        unboxedBinOp f l r = f (mkUnbox (translatedType r) l) r
 
   mkCase info safe reg cases def = 
       ASTSwitch (tag safe $ translateReg reg) (
@@ -268,7 +272,7 @@ instance CompileInfo CompileGo where
           LNoOp -> translateReg (last args)
 
           (LZExt sty dty) -> boxedIntegral dty $ unboxedIntegral sty (last args)
-          (LSExt ITNative ITBig) -> mkCall bigIntTy [mkUnbox intTy $ translateReg arg]
+          (LSExt sty dty) -> mkOp' (LZExt sty dty)
 
           (LPlus ty)  -> mkAdd      (unboxedNum ty lhs) (unboxedNum ty rhs)
           (LMinus ty) -> mkSubtract (unboxedNum ty lhs) (unboxedNum ty rhs)
@@ -320,10 +324,11 @@ instance CompileInfo CompileGo where
           LStrFloat              -> ASTBinOp "," (ASTIdent "_")
                                                  (mkCall "ParseFloat" [unboxedString arg,
                                                                        ASTNum (ASTInt 64)]) -- TODO: use bignum lib
-          (LIntFloat ITNative)   -> mkUnbox intTy $ translateReg arg
-          (LFloatInt ITNative)   -> mkUnbox floatTy $ translateReg arg
-          (LChInt ITNative)      -> mkUnbox charTy $ translateReg arg
-          (LIntCh ITNative)      -> mkUnbox intTy $ translateReg arg
+
+          (LIntFloat ITNative)   -> mkCast floatTy (mkUnbox intTy $ translateReg arg)
+          (LFloatInt ITNative)   -> mkCast intTy   (mkUnbox floatTy $ translateReg arg)
+          (LChInt ITNative)      -> mkCast intTy   (mkUnbox charTy $ translateReg arg)
+          (LIntCh ITNative)      -> mkCast charTy  (mkUnbox intTy $ translateReg arg)
 
           LFExp   -> floatfn "Exp"   arg
           LFLog   -> floatfn "Log"   arg
@@ -347,8 +352,8 @@ instance CompileInfo CompileGo where
 
           LStrTail  -> ASTIndex (unboxedString arg) (ASTRaw "1:")
 
-          LReadStr    -> mkCall "freadStr" [mkUnbox managedPtrTy $ translateReg arg]
-          LSystemInfo -> mkCall "systemInfo"  [translateReg arg]
+          LReadStr    -> mkCall "FileReadLine" [mkUnbox fileTy $ translateReg arg]
+          LSystemInfo -> ASTString "golang backend (stub version info)"
           LNullPtr    -> mkNull
 
           _ -> ASTError $ "Not implemented: " ++ show op
@@ -425,8 +430,8 @@ fnParams = [vm ++ " *VirtualMachine", oldbase ++ " " ++ baseType]
 mkUnbox :: String -> ASTNode -> ASTNode
 mkUnbox typ obj =  ASTProj (ASTProj (mkCall "ValueOf" [obj]) "Interface()") ("(" ++ typ ++ ")")
 
-unboxedType :: ASTNode -> String
-unboxedType e = case e of
+translatedType :: ASTNode -> String
+translatedType e = case e of
                   (ASTString _)                       -> stringTy
                   (ASTNum (ASTFloat _))               -> floatTy
                   (ASTNum (ASTInteger (ASTBigInt _))) -> bigIntTy
@@ -456,9 +461,10 @@ bigIntTy     = "uint64" -- TODO: switch to big.Int
 floatTy      = "float64"
 stringTy     = "string"
 charTy       = "byte" -- TODO: switch to "rune" and unicode functions
-managedPtrTy = "ManagedPtr"
+managedPtrTy = "*interface{}" -- TODO: placeholder
 ptrTy        = "Ptr"
 conTy        = "Con"
+fileTy       = "*File"
 
 wordTy :: Int -> String
 wordTy n = PF.printf "Word%d" n
