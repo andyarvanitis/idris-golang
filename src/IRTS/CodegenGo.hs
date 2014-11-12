@@ -70,6 +70,7 @@ codegenGo_all definitions outputType filename includes objs libs flags dbg = do
                   `T.append` mkImport "unicode/utf8"
                   `T.append` mkImport "fmt"
                   `T.append` mkImport "math"
+                  `T.append` mkQualifiedImport "math/big"
                   `T.append` mkImport "idris_runtime"
                   `T.append` "\n"
                   `T.append` T.concat (map (compile info) go)
@@ -96,8 +97,11 @@ codegenGo_all definitions outputType filename includes objs libs flags dbg = do
       mkImport :: String -> T.Text
       mkImport pkg = T.pack $ PF.printf "import . \"%s\"\n" pkg
 
+      mkQualifiedImport :: String -> T.Text
+      mkQualifiedImport pkg = T.pack $ PF.printf "import \"%s\"\n" pkg
+
       mkIgnoreUnusedImports = T.pack $ foldr (++) "\n" (map ("\nconst _ = " ++) consts)
-        where consts = ["IntSize", "UTFMax", "Pi", "DevNull"]
+        where consts = ["IntSize", "UTFMax", "Pi", "MaxBase", "DevNull"]
 
       mkMain = T.pack $ "func main () {\n" ++
                         "  vm := VirtualMachine{}\n" ++
@@ -125,8 +129,14 @@ instance CompileInfo CompileGo where
 -------------------------------------------------------------------------------
   mkAssign _ r1 r2 = ASTAssign (translateReg r1) (translateReg r2)
 
-  mkAssignConst _ r c = let value = translateConstant c in
-                        ASTAssign (translateReg r) (mkCast (translatedType value) value)
+  mkAssignConst _ r c =
+    ASTAssign (translateReg r) (case value of
+                                 ASTNum (ASTInteger (ASTBigInt i)) -> bigValue i
+                                 _                                 -> mkCast (translatedType value) value)
+      where value = translateConstant c
+            bigValue i
+              | i > (toInteger (maxBound::Int)) || i < (toInteger (minBound::Int)) = mkBigIntStr (show i)
+              | otherwise = mkBigInt value
 
   mkAddTop info n = case n of
                       0 -> ASTNoop
@@ -264,6 +274,21 @@ instance CompileInfo CompileGo where
   mkProject _ reg loc 0  = ASTNoop
   mkProject _ reg loc ar = mkCall "Project" [mkVm, translateReg reg, ASTNum (ASTInt loc), ASTNum (ASTInt ar)]
 
+
+  mkOp _ reg (LEq (ATInt ITBig)) (lhs:rhs:_) = mkBigBinOp  reg lhs rhs "Add"
+
+  mkOp _ reg (LPlus (ATInt ITBig)) (lhs:rhs:_)
+     | lhs == reg || rhs == reg = mkBigBinOp  reg lhs rhs "Add"
+     | otherwise                = mkBigBinOp' reg lhs rhs "Add"
+
+  -- mkOp _ reg (LMinus (ATInt ITBig)) (lhs:rhs:_) = error "BIG LMinus"
+  --
+  -- mkOp _ reg (LTimes (ATInt ITBig)) (lhs:rhs:_) = error "BIG LTimes"
+  --
+  -- mkOp _ reg (LSDiv (ATInt ITBig)) (lhs:rhs:_) = error "BIG LSDiv"
+  --
+  -- mkOp _ reg (LSRem (ATInt ITBig)) (lhs:rhs:_) = error "BIG LSRem"
+
   mkOp _ reg oper args = ASTAssign (translateReg reg) (mkOp' oper)
     where
       mkOp' :: PrimFn -> ASTNode
@@ -318,8 +343,8 @@ instance CompileInfo CompileGo where
           (LIntStr ITBig)        -> mkAsString $ translateReg arg
           (LStrInt ITBig)        -> ASTBinOp "," (ASTIdent "_")
                                                  (mkCall "ParseInt" [unboxedString arg,
-                                                                     ASTNum (ASTInt 10),
-                                                                     ASTNum (ASTInt 64)]) -- TODO: use bignum lib
+                                                                     mkInt 10,
+                                                                     mkInt 64]) -- TODO: use bignum lib
           LFloatStr              -> mkAsString $ translateReg arg
           LStrFloat              -> ASTBinOp "," (ASTIdent "_")
                                                  (mkCall "ParseFloat" [unboxedString arg,
@@ -457,9 +482,25 @@ mkCast typ expr = mkCall typ [expr]
 mkBoolToInt :: ASTNode -> ASTNode
 mkBoolToInt b = mkCall "BoolToInt" [b]
 
+-----------------------------------------------------------------------------------------------------------------------
+mkBigInt n = mkCall "big.NewInt" [n]
+
+mkBigIntStr :: String -> ASTNode
+mkBigIntStr n = mkMeth (mkBigInt mkZero) "SetString" [ASTString n, mkInt 10]
+
+unboxBig :: Reg -> ASTNode
+unboxBig r = mkUnbox bigIntTy $ translateReg r
+
+mkBigBinOp :: Reg -> Reg -> Reg -> String -> ASTNode
+mkBigBinOp dest lhs rhs op = mkMeth (unboxBig dest) op [unboxBig lhs, unboxBig rhs]
+
+mkBigBinOp' :: Reg -> Reg -> Reg -> String -> ASTNode
+mkBigBinOp' dest lhs rhs op = ASTAssign (translateReg dest) $ mkMeth (mkBigInt mkZero) op [unboxBig lhs, unboxBig rhs]
+-----------------------------------------------------------------------------------------------------------------------
+
 nullptr      = "nil"
 intTy        = "int"
-bigIntTy     = "uint64" -- TODO: switch to big.Int
+bigIntTy     = "*big.Int"
 floatTy      = "float64"
 stringTy     = "string"
 charTy       = "byte" -- TODO: switch to "rune" and unicode functions

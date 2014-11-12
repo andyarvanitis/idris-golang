@@ -385,3 +385,5 @@ mkDivide lhs rhs = ASTBinOp "/" lhs rhs
 mkModulo :: ASTNode -> ASTNode -> ASTNode
 mkModulo lhs rhs = ASTBinOp "%" lhs rhs
 
+mkInt :: Int -> ASTNode
+mkInt n = ASTNum (ASTInt n)
