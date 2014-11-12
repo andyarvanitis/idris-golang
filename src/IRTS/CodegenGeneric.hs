@@ -39,6 +39,7 @@ class CompileInfo a where
   mkProject :: a -> Reg -> Int -> Int -> ASTNode
   mkOp :: a -> Reg -> PrimFn -> [Reg] -> ASTNode
   mkError :: a -> String -> ASTNode
+  mkBigLit :: a -> Integer -> String
   compileAlloc :: a -> Int -> ASTNode -> T.Text
   compileError :: a -> Int -> ASTNode -> T.Text
 
@@ -208,13 +209,8 @@ compile' info indent (ASTNum num) =
   case num of
     ASTInt i                     -> T.pack (show i)
     ASTFloat f                   -> T.pack (show f)
-    ASTInteger (ASTBigInt i)     -> T.pack $ big i
+    ASTInteger (ASTBigInt i)     -> T.pack $ mkBigLit info i
     ASTInteger (ASTBigIntExpr e) -> compile' info indent e
-  where
-    big :: Integer -> String
-    big i
-      | i > (toInteger (maxBound::Int)) || i < (toInteger (minBound::Int)) = "asBig(" ++ (show i) ++ ")"
-      | otherwise = show i
 
 compile' info indent (ASTAssign lhs rhs) =
   compile' info indent lhs `T.append` " = " `T.append` compile' info indent rhs

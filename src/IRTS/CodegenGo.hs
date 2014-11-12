@@ -286,11 +286,11 @@ instance CompileInfo CompileGo where
           (LSGt ty) -> mkBoolToInt $ mkGreaterThan   (unboxedNum ty lhs) (unboxedNum ty rhs)
           (LSGe ty) -> mkBoolToInt $ mkGreaterThanEq (unboxedNum ty lhs) (unboxedNum ty rhs)
 
-          (LTrunc ITNative (ITFixed IT8))        -> mkTrunc intTy        8  "0xFFu"
-          (LTrunc (ITFixed IT16) (ITFixed IT8))  -> mkTrunc (wordTy 16)  8  "0xFFu"
-          (LTrunc (ITFixed IT32) (ITFixed IT16)) -> mkTrunc (wordTy 32) 16  "0xFFFFu"
-          (LTrunc (ITFixed IT64) (ITFixed IT32)) -> mkTrunc (wordTy 64) 32  "0xFFFFFFFFu"
-          (LTrunc ITBig (ITFixed IT64))          -> mkTrunc bigIntTy    64  "0xFFFFFFFFFFFFFFFFu"
+          (LTrunc ITNative (ITFixed IT8))        -> mkTrunc intTy        8  "0xFF"
+          (LTrunc (ITFixed IT16) (ITFixed IT8))  -> mkTrunc (wordTy 16)  8  "0xFF"
+          (LTrunc (ITFixed IT32) (ITFixed IT16)) -> mkTrunc (wordTy 32) 16  "0xFFFF"
+          (LTrunc (ITFixed IT64) (ITFixed IT32)) -> mkTrunc (wordTy 64) 32  "0xFFFFFFFF"
+          (LTrunc ITBig (ITFixed IT64))          -> mkTrunc bigIntTy    64  "0xFFFFFFFFFFFFFFFF"
 
           (LTrunc ITBig ITNative) -> mkCast (intTy) (mkUnbox bigIntTy $ translateReg arg)
 
@@ -386,6 +386,8 @@ instance CompileInfo CompileGo where
 
   mkError _ = ASTError
 
+  mkBigLit _ i = show i
+
   compileAlloc info indent (ASTAlloc typename name val) =
     case val of Nothing   -> decl
                 Just expr -> decl `T.append` " = " `T.append` compile' info indent expr
@@ -447,7 +449,7 @@ mkAsString :: ASTNode -> ASTNode
 mkAsString value = mkCall "Sprint" [value]
 
 mkAsIntegral :: ASTNode -> ASTNode
-mkAsIntegral obj = mkMeth (mkCall "ValueOf" [obj]) "Int" []
+mkAsIntegral obj = mkMeth (mkCall "ValueOf" [obj]) "Uint" []
 
 mkCast :: String -> ASTNode -> ASTNode
 mkCast typ expr = mkCall typ [expr]
@@ -467,4 +469,4 @@ conTy        = "Con"
 fileTy       = "*File"
 
 wordTy :: Int -> String
-wordTy n = PF.printf "Word%d" n
+wordTy n = PF.printf "uint%d" n
