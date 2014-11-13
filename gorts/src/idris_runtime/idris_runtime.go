@@ -3,6 +3,7 @@ package idris_runtime
 import . "reflect"
 import . "os"
 import "bufio"
+import "math/big"
 
 
 type VirtualMachine struct {
@@ -46,6 +47,15 @@ func BoolToInt(isTrue bool) int {
     return 0
   }
 }
+
+func NewBigInt(n string) *big.Int {
+  intResult, _ := big.NewInt(0).SetString(n, 0)
+  return intResult
+}
+
+var BigIntZero = big.NewInt(0)
+var BigIntOne = big.NewInt(1)
+
 
 func Slide(vm *VirtualMachine, num_args uintptr) {
   for i := uintptr(0); i < num_args; i++ {
