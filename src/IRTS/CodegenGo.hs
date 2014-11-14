@@ -14,6 +14,8 @@ import Util.System
 
 import Numeric
 import Data.Char
+import Data.Int
+import Data.Word
 import Data.List (intercalate)
 import System.Process
 import System.Exit
@@ -133,11 +135,13 @@ instance CompileInfo CompileGo where
     case value of
       ASTNum (ASTInteger (ASTBigInt i)) -> assignBigValue i
       _                                 -> ASTAssign (translateReg r) (mkCast (translatedType value) value)
-      where value = translateConstant c
-            assignBigValue i
-              | i > (toInteger (maxBound::Int)) ||
-                i < (toInteger (minBound::Int)) = ASTAssign (translateReg r) (mkBigIntStr (show i))
-              | otherwise = ASTAssign (translateReg r) (mkBigInt value)
+      where
+        value = translateConstant c
+        assignBigValue i
+          | i > (toInteger (maxBound::Word64)) ||
+            i < (toInteger (minBound::Int64)) = ASTAssign (translateReg r) (mkBigIntFromString (ASTString $ show i))
+          | i > (toInteger (maxBound::Int64)) = ASTAssign (translateReg r) (mkNewBigUInt i)
+          | otherwise = ASTAssign (translateReg r) (mkNewBigInt i)
 
   mkAddTop info n = case n of
                       0 -> ASTNoop
@@ -253,17 +257,18 @@ instance CompileInfo CompileGo where
         prepBranch bc = ASTSeq $ map (translateBC info) bc
 
         binOp :: (ASTNode -> ASTNode -> ASTNode) -> ASTNode -> ASTNode -> ASTNode
-        binOp f l r = case r of 
+        binOp f l r = case r of
                         (ASTNum (ASTInteger (ASTBigInt i))) -> eqCheck (asType bigIntTy l) (mkBig i)
                         _ -> f (asType (translatedType r) l) r
-                        where 
+                        where
                           eqCheck lhs rhs = mkEq (mkMeth lhs "Cmp" [rhs]) mkZero
                           mkBig i
-                            | i == 0 = ASTRaw "BigIntZero"
-                            | i == 1 = ASTRaw "BigIntOne"
-                            | i > (toInteger (maxBound::Int)) ||
-                              i < (toInteger (minBound::Int)) = mkBigIntStr (show i)
-                            | otherwise = mkBigInt r
+                            | i == 0 = ASTRaw "ConstBigZero"
+                            | i == 1 = ASTRaw "ConstBigOne"
+                            | i > (toInteger (maxBound::Word64)) ||
+                              i < (toInteger (minBound::Int64)) = mkBigIntFromString (ASTString $ show i)
+                            | i > (toInteger (maxBound::Int64)) = mkNewBigUInt i
+                            | otherwise = mkNewBigInt i
 
   mkCase info safe reg cases def = 
       ASTSwitch (tag safe $ translateReg reg) (
@@ -298,18 +303,16 @@ instance CompileInfo CompileGo where
      | otherwise                = mkAllocBigBinOp reg lhs rhs "Mul"
 
   mkOp _ reg (LSRem (ATInt ITBig)) (lhs:rhs:_)
-     | lhs == reg || rhs == reg = mkBigBinOp      reg lhs rhs "Mod"
-     | otherwise                = mkAllocBigBinOp reg lhs rhs "Mod"
+     | lhs == reg || rhs == reg = mkBigBinOp      reg lhs rhs "Rem"
+     | otherwise                = mkAllocBigBinOp reg lhs rhs "Rem"
 
-  mkOp _ reg (LTrunc ITBig (ITFixed IT64)) (arg:_) = ASTSeq [ASTAssign (translateReg reg) 
-                                                                       (mkBigIntStr "0xFFFFFFFFFFFFFFFF"),
-                                                             ASTAssign (translateReg reg) 
-                                                                       mkMeth (mkMeth (asBig reg) "And" [asBig reg, asBig arg])
-                                                                       
-                                                                       ) "Uint64" [])]
-
-     -- | arg == reg = mkMeth (mkBigBinOp'      reg (asBig arg) (mkBigIntStr "0xFFFFFFFFFFFFFFFF") "And") "Uint64" []
-     -- | otherwise  = mkMeth (mkAllocBigBinOp' reg (asBig arg) (mkBigIntStr "0xFFFFFFFFFFFFFFFF") "And") "Uint64" []
+  mkOp _ reg (LTrunc ITBig (ITFixed IT64)) (arg:_) =
+    ASTCond [(ASTIdent "true", ASTSeq [
+              ASTAlloc Nothing tmpVarName (Just (mkNewBigUIntStr "0xFFFFFFFFFFFFFFFF")),
+              ASTAssign (translateReg reg)
+                        (mkMeth (mkMeth tmpVar "And" [tmpVar, asBig arg]) "Uint64" [])])]
+    where tmpVarName = "tmpBig"
+          tmpVar = ASTIdent tmpVarName
 
   mkOp _ reg oper args = ASTAssign (translateReg reg) (mkOp' oper)
     where
@@ -318,6 +321,7 @@ instance CompileInfo CompileGo where
         case op of
           LNoOp -> translateReg (last args)
 
+          (LZExt sty ITBig) -> mkNewBigInt' (mkAsInt . translateReg $ last args)
           (LZExt sty dty) -> mkIntCast dty $ asInt sty (last args)
           (LSExt sty dty) -> mkOp' (LZExt sty dty)
 
@@ -359,8 +363,8 @@ instance CompileInfo CompileGo where
           (LAnd ty)   -> mkIntCast ty $ mkBitAnd (asInt ty lhs) (asInt ty rhs)
           (LOr ty)    -> mkIntCast ty $ mkBitOr  (asInt ty lhs) (asInt ty rhs)
           (LXOr ty)   -> mkIntCast ty $ mkBitXor (asInt ty lhs) (asInt ty rhs)
-          (LSHL ty)   -> mkIntCast ty $ mkBitShl (asInt ty lhs) (mkAsIntegral $ translateReg rhs)
-          (LASHR ty)  -> mkIntCast ty $ mkBitShr (asInt ty lhs) (mkAsIntegral $ translateReg rhs)
+          (LSHL ty)   -> mkIntCast ty $ mkBitShl (asInt ty lhs) (mkAsUInt $ translateReg rhs)
+          (LASHR ty)  -> mkIntCast ty $ mkBitShr (asInt ty lhs) (mkAsUInt $ translateReg rhs)
           (LCompl ty) -> mkIntCast ty $ mkBitCompl (asInt ty arg)
 
           LStrConcat -> mkAdd (asString lhs) (asString rhs)
@@ -371,7 +375,7 @@ instance CompileInfo CompileGo where
           (LStrInt ITNative)     -> mkCall "Atoi" [asString arg]
           (LIntStr ITNative)     -> mkToString $ translateReg arg
           (LIntStr ITBig)        -> mkMeth (asBig arg) "String" []
-          (LStrInt ITBig)        -> mkNewBigInt (asString arg)
+          (LStrInt ITBig)        -> mkBigIntFromString (asString arg)
           LFloatStr              -> mkToString $ translateReg arg
           LStrFloat              -> ignoreSecond (mkCall "ParseFloat" [asString arg, ASTNum (ASTInt 64)])
 
@@ -398,7 +402,7 @@ instance CompileInfo CompileGo where
 
           LStrRev   -> mkCall "reverse" [asType stringTy $ translateReg arg]
 
-          LStrIndex -> ASTIndex (asString arg) (mkAsIntegral $ translateReg rhs)
+          LStrIndex -> ASTIndex (asString arg) (mkAsUInt $ translateReg rhs)
 
           LStrTail  -> ASTIndex (asString arg) (ASTRaw "1:")
 
@@ -412,25 +416,25 @@ instance CompileInfo CompileGo where
             (lhs:rhs:_) = args
             (arg:_) = args
 
-            mkTrunc src dst mask = mkBitAnd (asType src $ translateReg arg) (ASTRaw mask)
+            mkTrunc src dst mask =
+              mkCast (wordTy dst) (mkBitAnd (asType src $ translateReg arg) (ASTRaw mask))
 
             mkStrLen s = mkCall "len" [s]
 
-            mkIntCast ty expr = mkCall (arithTy (ATInt ty)) [expr]
+            mkIntCast ty expr = mkCast (arithTy (ATInt ty)) expr
 
             asString reg = asType stringTy (translateReg reg)
             asNum ty reg = asType (arithTy ty) (translateReg reg)
             asInt ty reg = asType (arithTy (ATInt ty)) (translateReg reg)
 
             arithTy (ATInt ITNative)       = intTy
-            arithTy (ATInt ITBig)          = bigIntTy
             arithTy (ATInt ITChar)         = charTy
             arithTy (ATFloat)              = floatTy
             arithTy (ATInt (ITFixed IT8))  = wordTy 8
             arithTy (ATInt (ITFixed IT16)) = wordTy 16
             arithTy (ATInt (ITFixed IT32)) = wordTy 32
             arithTy (ATInt (ITFixed IT64)) = wordTy 64
-            arithTy (ty)                   = "UNKNOWN TYPE: " ++ show ty
+            arithTy (ty)                   = error ("UNKNOWN TYPE: " ++ show ty)
 
             floatfn fn r = mkCall fn  [asType floatTy $ translateReg r]
 
@@ -497,8 +501,11 @@ translatedType e = case e of
 mkToString :: ASTNode -> ASTNode
 mkToString value = mkCall "Sprint" [value]
 
-mkAsIntegral :: ASTNode -> ASTNode
-mkAsIntegral obj = mkMeth (mkCall "ValueOf" [obj]) "Uint" []
+mkAsInt :: ASTNode -> ASTNode
+mkAsInt obj = mkMeth (mkCall "ValueOf" [obj]) "Int" []
+
+mkAsUInt :: ASTNode -> ASTNode
+mkAsUInt obj = mkMeth (mkCall "ValueOf" [obj]) "Uint" []
 
 mkCast :: String -> ASTNode -> ASTNode
 mkCast typ expr = mkCall typ [expr]
@@ -513,27 +520,40 @@ mkAssignFirst :: ASTNode -> ASTNode -> ASTNode
 mkAssignFirst lhs rhs = ASTAssign (ignoreSecond lhs) rhs
 
 -----------------------------------------------------------------------------------------------------------------------
-mkBigInt n = mkCall "big.NewInt" [n]
+mkAllocBigInt :: ASTNode
+mkAllocBigInt = mkCall "new" [ASTIdent "big.Int"]
 
-mkNewBigInt :: ASTNode -> ASTNode
-mkNewBigInt n = mkCall "NewBigInt" [n]
+mkNewBigInt' :: ASTNode -> ASTNode
+mkNewBigInt' n = mkCall "big.NewInt" [n]
 
-mkBigIntStr :: String -> ASTNode
-mkBigIntStr s = mkNewBigInt (ASTString s)
+mkNewBigInt :: Integer -> ASTNode
+mkNewBigInt n = mkNewBigInt' (mkBigInt n)
+
+mkNewBigUInt' :: ASTNode -> ASTNode
+mkNewBigUInt' n = mkMeth mkAllocBigInt "SetUint64" [n]
+
+mkNewBigUInt :: Integer -> ASTNode
+mkNewBigUInt n = mkNewBigUInt' (mkBigInt n)
+
+mkNewBigUIntStr :: String -> ASTNode
+mkNewBigUIntStr n = mkNewBigUInt' (ASTRaw n)
+
+mkBigIntFromString :: ASTNode -> ASTNode
+mkBigIntFromString n = mkCall "BigIntFromString" [n]
 
 asBig :: Reg -> ASTNode
 asBig r = asType bigIntTy $ translateReg r
 
 mkAllocBigBinOp :: Reg -> Reg -> Reg -> String -> ASTNode
 mkAllocBigBinOp dest lhs rhs op =
-  ASTAssign (translateReg dest) (mkMeth (mkBigInt mkZero) op [asBig lhs, asBig rhs])
+  ASTAssign (translateReg dest) (mkMeth mkAllocBigInt op [asBig lhs, asBig rhs])
 
 mkBigBinOp :: Reg -> Reg -> Reg -> String -> ASTNode
 mkBigBinOp dest lhs rhs op = mkMeth (asBig dest) op [asBig lhs, asBig rhs]
 
 mkAllocBigBinOp' :: Reg -> ASTNode -> ASTNode -> String -> ASTNode
 mkAllocBigBinOp' dest lhs rhs op =
-  ASTAssign (translateReg dest) (mkMeth (mkBigInt mkZero) op [lhs, rhs])
+  ASTAssign (translateReg dest) (mkMeth mkAllocBigInt op [lhs, rhs])
 
 mkBigBinOp' :: Reg -> ASTNode -> ASTNode -> String -> ASTNode
 mkBigBinOp' dest lhs rhs op = mkMeth (asBig dest) op [lhs, rhs]

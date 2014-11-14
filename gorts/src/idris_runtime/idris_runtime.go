@@ -48,13 +48,13 @@ func BoolToInt(isTrue bool) int {
   }
 }
 
-func NewBigInt(n string) *big.Int {
+func BigIntFromString(n string) *big.Int {
   intResult, _ := big.NewInt(0).SetString(n, 0)
   return intResult
 }
 
-var BigIntZero = big.NewInt(0)
-var BigIntOne = big.NewInt(1)
+var ConstBigZero = big.NewInt(0)
+var ConstBigOne  = big.NewInt(1)
 
 
 func Slide(vm *VirtualMachine, num_args uintptr) {

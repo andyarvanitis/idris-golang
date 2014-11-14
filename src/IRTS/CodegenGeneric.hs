@@ -159,12 +159,6 @@ compile' info indent (ASTApp lhs rhs)
   where args :: T.Text
         args = T.intercalate "," $ map (compile' info 0) rhs
 
-compile' info indent (ASTNew name args) =
-  T.pack name
-  `T.append` "("
-  `T.append` T.intercalate "," (map (compile' info 0) args)
-  `T.append` ")"
-
 compile' info indent err@(ASTError _) = compileError info indent err
 
 compile' info indent (ASTBinOp op lhs rhs) =
@@ -214,12 +208,6 @@ compile' info indent (ASTNum num) =
 
 compile' info indent (ASTAssign lhs rhs) =
   compile' info indent lhs `T.append` " = " `T.append` compile' info indent rhs
-
-compile' info 0 (ASTAlloc _ name (Just val@(ASTNew _ _))) =
-  T.pack name
-  `T.append` " = "
-  `T.append` compile' info 0 val
-  `T.append` ";\n"
 
 compile' info indent alloc@(ASTAlloc typename name val) = compileAlloc info indent alloc
 
@@ -387,3 +375,6 @@ mkModulo lhs rhs = ASTBinOp "%" lhs rhs
 
 mkInt :: Int -> ASTNode
 mkInt n = ASTNum (ASTInt n)
+
+mkBigInt :: Integer -> ASTNode
+mkBigInt n = ASTNum (ASTInteger (ASTBigInt n))

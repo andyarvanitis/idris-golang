@@ -39,7 +39,6 @@ data ASTNode = ASTRaw String
         | ASTList [ASTNode]
         | ASTReturn ASTNode
         | ASTApp ASTNode [ASTNode]
-        | ASTNew String [ASTNode]
         | ASTError String
         | ASTBinOp String ASTNode ASTNode
         | ASTPreOp String ASTNode
