@@ -102,8 +102,10 @@ codegenGo_all definitions outputType filename includes objs libs flags dbg = do
       mkQualifiedImport :: String -> T.Text
       mkQualifiedImport pkg = T.pack $ PF.printf "import \"%s\"\n" pkg
 
-      mkIgnoreUnusedImports = T.pack $ foldr (++) "\n" (map ("\nconst _ = " ++) consts)
-        where consts = ["IntSize", "UTFMax", "Pi", "big.MaxBase", "DevNull"]
+      mkIgnoreUnusedImports = T.pack (foldr (++) "\n" (map ("\nconst _ = " ++) consts)) `T.append`
+                              T.pack (foldr (++) "\n" (map ("\nvar _ " ++) types))
+        where consts = ["SelectDefault", "IntSize", "UTFMax", "Pi", "big.MaxBase", "DevNull"]
+              types = ["State"]
 
       mkMain = T.pack $ "func main () {\n" ++
                         "  vm := VirtualMachine{}\n" ++
@@ -159,6 +161,13 @@ instance CompileInfo CompileGo where
                    ASTAssign (translateReg reg) 
                              (ASTBinOp ";" mkNull (mkCall "Print" [asType stringTy $ translateReg str]))
 
+      "putchar" -> let [(_, ch)] = args in
+                   ASTAssign (translateReg reg)
+                             (ASTBinOp ";" mkNull (mkCall "Printf" [ASTString "%c",
+                                                                    asType charTy $ translateReg ch]))
+
+      "getchar" -> mkCall "Scanf" [ASTString "%c", asType charTy $ translateReg reg]
+
       "fileOpen" -> let [(_, name),(_, mode)] = args in
                     ASTAssign (translateReg reg)
                               (mkCall "FileOpen" [asType stringTy $ translateReg name,
@@ -167,12 +176,12 @@ instance CompileInfo CompileGo where
                      ASTAssign (translateReg reg) (mkMeth (asType fileTy $ translateReg fh) "Close" [])
 
       "fputStr" -> let [(_, fh),(_, str)] = args in
-                   ASTAssign (translateReg reg) 
-                             (mkMeth (asType fileTy $ translateReg fh) 
-                                     "WriteString" 
-                                     [asType stringTy $ translateReg str])
+                   mkAssignFirst (translateReg reg)
+                                 (mkMeth (asType fileTy $ translateReg fh)
+                                         "WriteString"
+                                         [asType stringTy $ translateReg str])
 
-      "fileEOF" -> let [(_, fh)] = args in error "fileEOF not supported yet"
+      "fileEOF" -> let [(_, fh)] = args in ASTAssign (translateReg reg) mkZero -- TODO: always false
       "fileError" -> let [(_, fh)] = args in error "fileError not supported yet"
 
       "isNull" -> let [(_, arg)] = args in
@@ -183,6 +192,8 @@ instance CompileInfo CompileGo where
 
       "getenv" -> let [(_, arg)] = args in
                   ASTAssign (translateReg reg) (mkCall "Getenv" [asType stringTy $ translateReg arg])
+
+      "exit" -> mkCall "Exit" [asType intTy $ translateReg reg]
 
       _ -> ASTAssign (translateReg reg) (let callexpr = ASTFFI n (map generateWrapper args) in
                                          case ret of
@@ -410,7 +421,11 @@ instance CompileInfo CompileGo where
           LSystemInfo -> ASTString "golang backend (stub version info)"
           LNullPtr    -> mkNull
 
-          _ -> ASTError $ "Not implemented: " ++ show op
+          LStdIn  -> ASTIdent "Stdin"
+          LStdOut -> ASTIdent "Stdout"
+          LStdErr -> ASTIdent "Stderr"
+
+          _ -> error ("Not implemented: " ++ show op)
 
           where
             (lhs:rhs:_) = args
