@@ -10,7 +10,7 @@ import IRTS.AST
 import IRTS.CodegenGeneric
 import IRTS.CodegenFFI
 import Idris.Core.TT
-import Util.System
+import Util.System hiding (tempfile)
 
 import Numeric
 import Data.Char
@@ -21,6 +21,7 @@ import System.Process
 import System.Exit
 import System.IO
 import System.Directory
+import System.FilePath ((</>), normalise)
 import Control.Monad.State
 import Control.Arrow
 
@@ -89,9 +90,7 @@ codegenGo_all definitions outputType filename includes objs libs flags dbg = do
             hClose tmph
             let cc =
                      "GOPATH=${GOPATH}:" ++ path ++ "; " ++
-                     "mv " ++ tmpn ++ " " ++ path ++ "/src/main/main.go; " ++
-                     "go build main; " ++
-                     "mv main " ++ filename
+                     "go build -o " ++ filename ++ " " ++ tmpn
             exit <- system cc
             when (exit /= ExitSuccess) $
               putStrLn ("FAILURE: " ++ cc)
@@ -119,6 +118,10 @@ toGo info (name, bc) =
                : map (translateBC info)bc
     )
   ]
+
+tempfile :: IO (FilePath, Handle)
+tempfile = do dir <- getTemporaryDirectory
+              openTempFile (normalise dir) "idris.go"
 
 translateReg :: Reg -> ASTNode
 translateReg reg =
