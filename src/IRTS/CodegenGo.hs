@@ -198,6 +198,11 @@ instance CompileInfo CompileGo where
 
       "exit" -> mkCall "Exit" [asType intTy $ translateReg reg]
 
+      "idris_numArgs" -> ASTAssign (translateReg reg) (mkCall "len" [ASTIdent "Args"])
+      "idris_getArg"  -> let [(_, arg)] = args in
+                         ASTAssign (translateReg reg) (ASTIndex (ASTIdent "Args")
+                                   (asType intTy $ translateReg arg))
+
       _ -> ASTAssign (translateReg reg) (let callexpr = ASTFFI n (map generateWrapper args) in
                                          case ret of
                                            FUnit -> ASTBinOp ";" mkNull callexpr
