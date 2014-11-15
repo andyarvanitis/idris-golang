@@ -193,8 +193,12 @@ instance CompileInfo CompileGo where
       "idris_eqPtr" -> let [(_, lhs),(_, rhs)] = args in
                     ASTAssign (translateReg reg) (mkBoolToInt $ mkEq (translateReg lhs) (translateReg rhs))
 
-      "getenv" -> let [(_, arg)] = args in
-                  ASTAssign (translateReg reg) (mkCall "Getenv" [asType stringTy $ translateReg arg])
+      "getenv" -> ASTCond [(ASTIdent "true", ASTSeq [getEnv, getEnvResults])]
+                  where
+                    [(_, arg)] = args
+                    getEnv = ASTAssign (translateReg reg) (mkCall "Getenv" [asType stringTy $ translateReg arg])
+                    getEnvResults = ASTCond [(mkEq (asType stringTy $ translateReg reg) (ASTIdent "\"\""),
+                                              ASTSeq [ ASTAssign (translateReg reg) mkNull])]
 
       "exit" -> mkCall "Exit" [asType intTy $ translateReg reg]
 
