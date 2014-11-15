@@ -305,22 +305,6 @@ instance CompileInfo CompileGo where
   mkProject _ reg loc 0  = ASTNoop
   mkProject _ reg loc ar = mkCall "Project" [mkVm, translateReg reg, ASTNum (ASTInt loc), ASTNum (ASTInt ar)]
 
-  mkOp _ reg (LPlus (ATInt ITBig)) (lhs:rhs:_)
-     | lhs == reg || rhs == reg = mkBigBinOp      reg lhs rhs "Add"
-     | otherwise                = mkAllocBigBinOp reg lhs rhs "Add"
-
-  mkOp _ reg (LMinus (ATInt ITBig)) (lhs:rhs:_)
-     | lhs == reg || rhs == reg = mkBigBinOp      reg lhs rhs "Sub"
-     | otherwise                = mkAllocBigBinOp reg lhs rhs "Sub"
-
-  mkOp _ reg (LTimes (ATInt ITBig)) (lhs:rhs:_)
-     | lhs == reg || rhs == reg = mkBigBinOp      reg lhs rhs "Mul"
-     | otherwise                = mkAllocBigBinOp reg lhs rhs "Mul"
-
-  mkOp _ reg (LSRem (ATInt ITBig)) (lhs:rhs:_)
-     | lhs == reg || rhs == reg = mkBigBinOp      reg lhs rhs "Rem"
-     | otherwise                = mkAllocBigBinOp reg lhs rhs "Rem"
-
   mkOp _ reg (LTrunc ITBig (ITFixed IT64)) (arg:_) =
     ASTCond [(ASTIdent "true", ASTSeq [
               ASTAlloc Nothing tmpVarName (Just (mkNewBigUIntStr "0xFFFFFFFFFFFFFFFF")),
@@ -340,25 +324,28 @@ instance CompileInfo CompileGo where
           (LZExt sty dty) -> mkIntCast dty $ asInt sty (last args)
           (LSExt sty dty) -> mkOp' (LZExt sty dty)
 
+          (LPlus  (ATInt ITBig)) -> mkMeth mkAllocBigInt "Add" [asBig lhs, asBig rhs]
+          (LMinus (ATInt ITBig)) -> mkMeth mkAllocBigInt "Sub" [asBig lhs, asBig rhs]
+          (LTimes (ATInt ITBig)) -> mkMeth mkAllocBigInt "Mul" [asBig lhs, asBig rhs]
+          (LSDiv  (ATInt ITBig)) -> mkMeth mkAllocBigInt "Div" [asBig lhs, asBig rhs]
+          (LSRem  (ATInt ITBig)) -> mkMeth mkAllocBigInt "Rem" [asBig lhs, asBig rhs]
+
           (LPlus ty)  -> mkAdd      (asNum ty lhs) (asNum ty rhs)
           (LMinus ty) -> mkSubtract (asNum ty lhs) (asNum ty rhs)
           (LTimes ty) -> mkMultiply (asNum ty lhs) (asNum ty rhs)
           (LSDiv ty)  -> mkDivide   (asNum ty lhs) (asNum ty rhs)
           (LSRem ty)  -> mkModulo   (asNum ty lhs) (asNum ty rhs)
 
-          (LEq (ATInt ITBig)) -> mkBitXor (mkBitAnd (mkMeth (asBig lhs) "Cmp" [asBig rhs]) mkOne) mkOne
-          (LEq ty) -> mkBoolToInt $ mkEq            (asNum ty lhs) (asNum ty rhs)
-
-          (LSLt (ATInt ITBig)) -> mkBoolToInt $ mkLessThan (mkMeth (asBig lhs) "Cmp" [asBig rhs]) mkZero
-          (LSLt ty) -> mkBoolToInt $ mkLessThan      (asNum ty lhs) (asNum ty rhs)
-
-          (LSLe (ATInt ITBig)) -> mkBoolToInt $ mkLessThanEq (mkMeth (asBig lhs) "Cmp" [asBig rhs]) mkZero
-          (LSLe ty) -> mkBoolToInt $ mkLessThanEq    (asNum ty lhs) (asNum ty rhs)
-
-          (LSGt (ATInt ITBig)) -> mkBoolToInt $ mkGreaterThan (mkMeth (asBig lhs) "Cmp" [asBig rhs]) mkZero
-          (LSGt ty) -> mkBoolToInt $ mkGreaterThan   (asNum ty lhs) (asNum ty rhs)
-
+          (LEq  (ATInt ITBig)) -> mkBitXor (mkBitAnd (mkMeth (asBig lhs) "Cmp" [asBig rhs]) mkOne) mkOne
+          (LSLt (ATInt ITBig)) -> mkBoolToInt $ mkLessThan      (mkMeth (asBig lhs) "Cmp" [asBig rhs]) mkZero
+          (LSLe (ATInt ITBig)) -> mkBoolToInt $ mkLessThanEq    (mkMeth (asBig lhs) "Cmp" [asBig rhs]) mkZero
+          (LSGt (ATInt ITBig)) -> mkBoolToInt $ mkGreaterThan   (mkMeth (asBig lhs) "Cmp" [asBig rhs]) mkZero
           (LSGe (ATInt ITBig)) -> mkBoolToInt $ mkGreaterThanEq (mkMeth (asBig lhs) "Cmp" [asBig rhs]) mkZero
+
+          (LEq ty)  -> mkBoolToInt $ mkEq            (asNum ty lhs) (asNum ty rhs)
+          (LSLt ty) -> mkBoolToInt $ mkLessThan      (asNum ty lhs) (asNum ty rhs)
+          (LSLe ty) -> mkBoolToInt $ mkLessThanEq    (asNum ty lhs) (asNum ty rhs)
+          (LSGt ty) -> mkBoolToInt $ mkGreaterThan   (asNum ty lhs) (asNum ty rhs)
           (LSGe ty) -> mkBoolToInt $ mkGreaterThanEq (asNum ty lhs) (asNum ty rhs)
 
           (LTrunc ITNative (ITFixed IT8))        -> mkTrunc intTy        8  "0xFF"
@@ -417,7 +404,7 @@ instance CompileInfo CompileGo where
 
           LStrRev   -> mkCall "reverse" [asType stringTy $ translateReg arg]
 
-          LStrIndex -> ASTIndex (asString arg) (mkAsUInt $ translateReg rhs)
+          LStrIndex -> ASTIndex (asString arg) (asType intTy $ translateReg rhs)
 
           LStrTail  -> ASTIndex (asString arg) (ASTRaw "1:")
 
@@ -562,21 +549,6 @@ mkBigIntFromString n = mkCall "BigIntFromString" [n]
 
 asBig :: Reg -> ASTNode
 asBig r = asType bigIntTy $ translateReg r
-
-mkAllocBigBinOp :: Reg -> Reg -> Reg -> String -> ASTNode
-mkAllocBigBinOp dest lhs rhs op =
-  ASTAssign (translateReg dest) (mkMeth mkAllocBigInt op [asBig lhs, asBig rhs])
-
-mkBigBinOp :: Reg -> Reg -> Reg -> String -> ASTNode
-mkBigBinOp dest lhs rhs op = mkMeth (asBig dest) op [asBig lhs, asBig rhs]
-
-mkAllocBigBinOp' :: Reg -> ASTNode -> ASTNode -> String -> ASTNode
-mkAllocBigBinOp' dest lhs rhs op =
-  ASTAssign (translateReg dest) (mkMeth mkAllocBigInt op [lhs, rhs])
-
-mkBigBinOp' :: Reg -> ASTNode -> ASTNode -> String -> ASTNode
-mkBigBinOp' dest lhs rhs op = mkMeth (asBig dest) op [lhs, rhs]
-
 -----------------------------------------------------------------------------------------------------------------------
 
 nullptr      = "nil"
