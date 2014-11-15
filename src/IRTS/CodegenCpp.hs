@@ -390,7 +390,11 @@ instance CompileInfo CompileCpp where
           LSystemInfo -> mkBox stringTy $ mkCall "systemInfo"  [translateReg arg]
           LNullPtr    -> mkNull
 
-          _ -> ASTError $ "Not implemented: " ++ show op
+          LStdIn  -> mkBox ptrTy $ ASTIdent "stdin"
+          LStdOut -> mkBox ptrTy $ ASTIdent "stdout"
+          LStdErr -> mkBox ptrTy $ ASTIdent "stderr"
+
+          _ -> error $ "Not implemented: " ++ show op
 
           where
             (lhs:rhs:_) = args
