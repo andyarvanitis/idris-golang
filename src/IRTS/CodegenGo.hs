@@ -183,8 +183,9 @@ instance CompileInfo CompileGo where
                                  (mkMeth (asType fileTy $ translateReg fh)
                                          "WriteString"
                                          [asType stringTy $ translateReg str])
+      "fileEOF" -> let [(_, fh)] = args in
+                   ASTAssign (translateReg reg) (mkCall "FileEOF" [asType fileTy $ translateReg fh])
 
-      "fileEOF" -> let [(_, fh)] = args in ASTAssign (translateReg reg) mkZero -- TODO: always false
       "fileError" -> let [(_, fh)] = args in error "fileError not supported yet"
 
       "isNull" -> let [(_, arg)] = args in

@@ -94,7 +94,7 @@ func TailCall(vm *VirtualMachine, fn func(vm *VirtualMachine, oldbase uintptr), 
 
 func FileOpen(name string, mode string) *File {
   flags := 0
-  for char := range mode { // TODO: these need some work
+  for _, char := range mode { // TODO: these need some work
     switch char {
       case 'r': flags |= O_RDONLY
       case 'w': flags |= O_RDWR|O_TRUNC|O_CREATE
@@ -105,13 +105,38 @@ func FileOpen(name string, mode string) *File {
       flags &^= O_RDONLY
     }
   }
-  file, _ := OpenFile(name, flags, 0)
+  file, _ := OpenFile(name, flags, 0644)
   return file
 }
 
 
 func FileReadLine(file *File) string {
-  reader := bufio.NewReader(file)
-  line, _ := reader.ReadString('\n')
-  return line
+  // Save off current seek position
+  offset, error := file.Seek(0, SEEK_CUR)
+  if error == nil {
+    reader := bufio.NewReader(file)
+    line, error := reader.ReadString('\n')
+    if error == nil {
+      // Set seek position, since it's no longer correct
+      file.Seek(offset + int64(len(line)), SEEK_SET)
+      return line
+    }
+  }
+  return ""
+}
+
+func FileEOF(file *File) int {
+  info, error := file.Stat()
+  if error == nil {
+    size := info.Size()
+    offset, error := file.Seek(0, SEEK_CUR)
+    if error == nil {
+      if offset == size {
+        file.Seek(offset + 1, SEEK_SET)
+      } else if offset > size {
+        return 1
+      }
+    }
+  }
+  return 0
 }

@@ -15,7 +15,7 @@ test_cpp:
 	cd ../Idris-dev/test && ./runtest.pl without io003 reg031 --codegen cpp
 
 test_go:
-	cd ../Idris-dev/test && ./runtest.pl without io003 reg031 --codegen go
+	cd ../Idris-dev/test && ./runtest.pl without io003 reg031 effects002 --codegen go
 
 
 lib_clean:
