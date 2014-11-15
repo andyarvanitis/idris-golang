@@ -456,6 +456,9 @@ instance CompileInfo CompileGo where
 
   mkBigLit _ i = show i
 
+  lineTerminator _ = ""
+  condBraces _ = ("","")
+
   compileAlloc info indent (ASTAlloc typename name val) =
     case val of Nothing   -> decl
                 Just expr -> decl `T.append` " = " `T.append` compile' info indent expr

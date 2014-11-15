@@ -40,6 +40,8 @@ class CompileInfo a where
   mkOp :: a -> Reg -> PrimFn -> [Reg] -> ASTNode
   mkError :: a -> String -> ASTNode
   mkBigLit :: a -> Integer -> String
+  lineTerminator :: a -> T.Text
+  condBraces :: a -> (T.Text, T.Text)
   compileAlloc :: a -> Int -> ASTNode -> T.Text
   compileError :: a -> Int -> ASTNode -> T.Text
 
@@ -135,11 +137,11 @@ compile' info indent (ASTFunction args body) =
    `T.append` "\n}\n"
 
 compile' info indent (ASTSeq seq) =
-  T.intercalate ";\n" (
+  T.intercalate (lineTerminator info `T.append` "\n") (
     map (
       (T.replicate indent " " `T.append`) . (compile' info indent)
     ) $ filter (/= ASTNoop) seq
-  ) `T.append` ";"
+  ) `T.append` lineTerminator info
 
 compile' info indent (ASTList seq) =
   T.intercalate "," (
@@ -221,36 +223,41 @@ compile' info indent (ASTCond branches) =
   T.intercalate " else " $ map createIfBlock branches
   where
     createIfBlock (ASTNoop, e@(ASTSeq _)) =
-         "{\n"
+      "{\n"
       `T.append` compile' info (indent + 2) e
       `T.append` "\n" `T.append` T.replicate indent " " `T.append` "}"
     createIfBlock (ASTNoop, e) =
-         "{\n"
+      "{\n"
       `T.append` compile' info (indent + 2) e
-      `T.append` ";\n" `T.append` T.replicate indent " " `T.append` "}"
+      `T.append` lineTerminator info `T.append` "\n"
+      `T.append` T.replicate indent " " `T.append` "}"
     createIfBlock (cond, e@(ASTSeq _)) =
-         "if (" `T.append` compile' info indent cond `T.append`") {\n"
+         "if " `T.append` (fst $ condBraces info) `T.append` compile' info indent cond
+         `T.append` (snd $ condBraces info) `T.append` " {\n"
       `T.append` compile' info (indent + 2) e
       `T.append` "\n" `T.append` T.replicate indent " " `T.append` "}"
     createIfBlock (cond, e) =
-         "if (" `T.append` compile' info indent cond `T.append`") {\n"
+         "if " `T.append` (fst $ condBraces info) `T.append` compile' info indent cond
+         `T.append` (snd $ condBraces info) `T.append` " {\n"
       `T.append` T.replicate (indent + 2) " "
       `T.append` compile' info (indent + 2) e
-      `T.append` ";\n"
+      `T.append` lineTerminator info `T.append` "\n"
       `T.append` T.replicate indent " "
       `T.append` "}"
 
 compile' info indent (ASTSwitch val [(_,ASTSeq seq)] Nothing) =
   let (h,t) = splitAt 1 seq in
-         (T.concat (map (compile' info indent) h) `T.append` ";\n")
+         (T.concat (map (compile' info indent) h)
+         `T.append` lineTerminator info `T.append` "\n")
       `T.append` (
-        T.intercalate ";\n" $ map (
+        T.intercalate (lineTerminator info `T.append` "\n") $ map (
           (T.replicate indent " " `T.append`) . compile' info indent
         ) t
       )
 
 compile' info indent (ASTSwitch val branches def) =
-     "switch (" `T.append` compile' info indent val `T.append` ") {\n"
+     "switch " `T.append` (fst $ condBraces info) `T.append` compile' info indent val
+     `T.append` (snd $ condBraces info) `T.append` " {\n"
   `T.append` T.concat (map mkBranch branches)
   `T.append` mkDefault def
   `T.append` T.replicate indent " " `T.append` "}"
@@ -262,7 +269,8 @@ compile' info indent (ASTSwitch val branches def) =
       `T.append` compile' info indent tag
       `T.append` ":\n"
       `T.append` compile' info (indent + 4) code
-      `T.append` "\n" `T.append` T.replicate (indent + 2) " " `T.append` "break;\n"
+      `T.append` "\n" `T.append` T.replicate (indent + 2) " " `T.append` "break"
+      `T.append` lineTerminator info `T.append` "\n"
       `T.append` (T.replicate (indent + 4) " " `T.append` "\n")
 
     mkDefault :: Maybe ASTNode -> T.Text
@@ -270,7 +278,8 @@ compile' info indent (ASTSwitch val branches def) =
     mkDefault (Just def) =
          T.replicate (indent + 2) " " `T.append` "default:\n"
       `T.append` compile' info (indent + 4)def
-      `T.append` "\n" `T.append` T.replicate (indent + 2) " " `T.append` "break;\n"
+      `T.append` "\n" `T.append` T.replicate (indent + 2) " " `T.append` "break"
+      `T.append` lineTerminator info `T.append` "\n"
 
 compile' info indent (ASTTernary cond true false) =
   let c = compile' info indent cond
@@ -288,7 +297,8 @@ compile' info indent (ASTParens expr) =
   "(" `T.append` compile' info indent expr `T.append` ")"
 
 compile' info indent (ASTWhile cond body) =
-     "while (" `T.append` compile' info indent cond `T.append` ") {\n"
+     "while " `T.append` (fst $ condBraces info) `T.append` compile' info indent cond
+     `T.append` (snd $ condBraces info) `T.append` " {\n"
   `T.append` compile' info (indent + 2) body
   `T.append` "\n" `T.append` T.replicate indent " " `T.append` "}"
 

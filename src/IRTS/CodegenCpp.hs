@@ -434,6 +434,9 @@ instance CompileInfo CompileCpp where
     | i > (toInteger (maxBound::Int)) || i < (toInteger (minBound::Int)) = "asBig(" ++ (show i) ++ ")"
     | otherwise = show i
 
+  lineTerminator _ = ";"
+  condBraces _ = ("(",")")
+
   compileAlloc info indent (ASTAlloc typename name val) =
     case val of Nothing   -> typ `T.append` T.pack name
                 Just expr -> typ `T.append` T.pack name `T.append` " = " `T.append` compile' info indent expr
