@@ -69,7 +69,6 @@ codegenGo_all definitions outputType filename includes objs libs flags dbg = do
   let goout = (  T.pack "package main\n\n"
                   `T.append` mkImport "reflect"
                   `T.append` mkImport "os"
-                  `T.append` mkImport "strconv"
                   `T.append` mkImport "unicode/utf8"
                   `T.append` mkImport "fmt"
                   `T.append` mkImport "math"
@@ -103,7 +102,7 @@ codegenGo_all definitions outputType filename includes objs libs flags dbg = do
 
       mkIgnoreUnusedImports = T.pack (foldr (++) "\n" (map ("\nconst _ = " ++) consts)) `T.append`
                               T.pack (foldr (++) "\n" (map ("\nvar _ " ++) types))
-        where consts = ["SelectDefault", "IntSize", "UTFMax", "Pi", "big.MaxBase", "DevNull"]
+        where consts = ["SelectDefault", "UTFMax", "Pi", "big.MaxBase", "DevNull"]
               types = ["State"]
 
       mkMain = T.pack $ "func main () {\n" ++
@@ -144,7 +143,7 @@ instance CompileInfo CompileGo where
         value = translateConstant c
         assignBigValue i
           | i > (toInteger (maxBound::Word64)) ||
-            i < (toInteger (minBound::Int64)) = ASTAssign (translateReg r) (mkBigIntFromString (ASTString $ show i))
+            i < (toInteger (minBound::Int64)) = ASTAssign (translateReg r) (mkStringToBigInt (ASTString $ show i))
           | i > (toInteger (maxBound::Int64)) = ASTAssign (translateReg r) (mkNewBigUInt i)
           | otherwise = ASTAssign (translateReg r) (mkNewBigInt i)
 
@@ -281,7 +280,7 @@ instance CompileInfo CompileGo where
                             | i == 0 = ASTRaw "ConstBigZero"
                             | i == 1 = ASTRaw "ConstBigOne"
                             | i > (toInteger (maxBound::Word64)) ||
-                              i < (toInteger (minBound::Int64)) = mkBigIntFromString (ASTString $ show i)
+                              i < (toInteger (minBound::Int64)) = mkStringToBigInt (ASTString $ show i)
                             | i > (toInteger (maxBound::Int64)) = mkNewBigUInt i
                             | otherwise = mkNewBigInt i
 
@@ -374,12 +373,12 @@ instance CompileInfo CompileGo where
           LStrLt     -> mkBoolToInt $ mkLessThan (asString lhs) (asString rhs)
           LStrLen    -> mkStrLen (asType stringTy $ translateReg arg)
 
-          (LStrInt ITNative)     -> mkCall "Atoi" [asString arg]
+          (LStrInt ITNative)     -> mkCast intTy $ mkCall "StringToInt" [asString arg]
           (LIntStr ITNative)     -> mkToString $ translateReg arg
           (LIntStr ITBig)        -> mkMeth (asBig arg) "String" []
-          (LStrInt ITBig)        -> mkBigIntFromString (asString arg)
+          (LStrInt ITBig)        -> mkStringToBigInt (asString arg)
           LFloatStr              -> mkToString $ translateReg arg
-          LStrFloat              -> ignoreSecond (mkCall "ParseFloat" [asString arg, ASTNum (ASTInt 64)])
+          LStrFloat              -> mkCall "StringToFloat" [asString arg]
 
           (LIntFloat ITNative)   -> mkCast floatTy (asType intTy $ translateReg arg)
           (LFloatInt ITNative)   -> mkCast intTy   (asType floatTy $ translateReg arg)
@@ -544,8 +543,8 @@ mkNewBigUInt n = mkNewBigUInt' (mkBigInt n)
 mkNewBigUIntStr :: String -> ASTNode
 mkNewBigUIntStr n = mkNewBigUInt' (ASTRaw n)
 
-mkBigIntFromString :: ASTNode -> ASTNode
-mkBigIntFromString n = mkCall "BigIntFromString" [n]
+mkStringToBigInt :: ASTNode -> ASTNode
+mkStringToBigInt n = mkCall "StringToBigInt" [n]
 
 asBig :: Reg -> ASTNode
 asBig r = asType bigIntTy $ translateReg r

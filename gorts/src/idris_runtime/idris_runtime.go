@@ -2,8 +2,9 @@ package idris_runtime
 
 import . "reflect"
 import . "os"
-import "bufio"
-import "math/big"
+import . "strconv"
+import . "bufio"
+import   "math/big"
 
 
 type VirtualMachine struct {
@@ -46,6 +47,16 @@ func BoolToInt(isTrue bool) int {
   } else {
     return 0
   }
+}
+
+func StringToInt(s string) int64 {
+  value, _ := ParseInt(s, 0, 64)
+  return value
+}
+
+func StringToFloat(s string) float64 {
+  value, _ := ParseFloat(s, 64)
+  return value
 }
 
 func BigIntFromString(n string) *big.Int {
@@ -114,7 +125,7 @@ func FileReadLine(file *File) string {
   // Save off current seek position
   offset, error := file.Seek(0, SEEK_CUR)
   if error == nil {
-    reader := bufio.NewReader(file)
+    reader := NewReader(file)
     line, error := reader.ReadString('\n')
     if error == nil {
       // Set seek position, since it's no longer correct
