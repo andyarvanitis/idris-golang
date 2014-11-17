@@ -39,17 +39,10 @@ codegenGo ci =
                  (outputType ci)
                  (outputFile ci)
                  (includes ci)
-                 (concatMap mkObj (compileObjs ci))
-                 (concatMap mkLib (compileLibs ci) ++
-                     concatMap incdir (importDirs ci))
-                 (concatMap mkFlag (compilerFlags ci))
-                 (debugLevel ci)
-    where
-      mkObj f = f ++ " "
-      mkLib l = "-l" ++ l ++ " "
-      mkFlag l = l ++ " "
-      incdir i = "-I" ++ i ++ " "
-
+                 [] -- objc (currently unused)
+                 [] -- libs (currently unused)
+                 [] -- compiler flags (currently unused)
+                 (debugLevel ci) -- (currently unused)
 codegenGo_all ::
      [(Name, SDecl)] -> -- declarations/definitions
      OutputType ->      -- output type
@@ -135,9 +128,9 @@ translateReg reg =
     L n  -> mkLoc n
     T n  -> mkTop n
 
--------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------------------
 instance CompileInfo CompileGo where
--------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------------------
   mkAssign _ r1 r2 = ASTAssign (translateReg r1) (translateReg r2)
 
   mkAssignConst _ r c =
@@ -476,7 +469,7 @@ instance CompileInfo CompileGo where
 
   compileError info indent (ASTError exc) = compile info (mkCall "Println" [ASTString exc])
 
--------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------------------
 
 vm        = "vm"
 baseType  = "uintptr"
@@ -505,9 +498,6 @@ mkTop n = ASTIndex mkStack (mkAdd mkStacktop (ASTNum (ASTInt n)))
 
 mkPush args = ASTApp (ASTProj mkCallstack "push") args
 mkPop       = ASTBinOp ";" (mkMeth mkCallstack "top" []) (mkMeth mkCallstack "pop" [])
-
--- mkIsCon :: ASTNode -> ASTNode
--- mkIsCon obj = mkAnd obj (mkEq (mkPtrMeth obj "getTypeId" []) (ASTIdent "Con::typeId"))
 
 fnParams :: [String]
 fnParams = [vm ++ " *" ++ vmType ++ ", " ++ oldbase ++ " " ++ baseType]
@@ -548,7 +538,6 @@ ignoreSecond arg = ASTBinOp "," arg (ASTIdent "_")
 mkAssignFirst :: ASTNode -> ASTNode -> ASTNode
 mkAssignFirst lhs rhs = ASTAssign (ignoreSecond lhs) rhs
 
------------------------------------------------------------------------------------------------------------------------
 mkAllocBigInt :: ASTNode
 mkAllocBigInt = mkCall "new" [ASTIdent "big.Int"]
 
@@ -572,7 +561,6 @@ mkStringToBigInt n = mkCall "StringToBigInt" [n]
 
 asBig :: Reg -> ASTNode
 asBig r = asType bigIntTy $ translateReg r
------------------------------------------------------------------------------------------------------------------------
 
 nullptr      = "nil"
 intTy        = "int"
@@ -580,7 +568,6 @@ bigIntTy     = "*big.Int"
 floatTy      = "float64"
 stringTy     = "string"
 charTy       = "rune"
-managedPtrTy = "*interface{}" -- TODO: placeholder
 ptrTy        = "Ptr"
 conTy        = "Con"
 fileTy       = "*File"
