@@ -2,6 +2,10 @@ package idris_runtime
 
 import . "reflect"
 
+//-------------------------------------------------------------------------------------------------
+// Function used for calls from go into Idris
+//-------------------------------------------------------------------------------------------------
+
 func ProxyFunction(vm *VirtualMachine,
                    applyFn vmFunction,
                    con interface{},
