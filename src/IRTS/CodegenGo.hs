@@ -390,7 +390,7 @@ instance CompileInfo CompileGo where
           LStrConcat -> mkAdd (asString lhs) (asString rhs)
           LStrEq     -> mkBoolToInt $ mkEq (asString lhs) (asString rhs)
           LStrLt     -> mkBoolToInt $ mkLessThan (asString lhs) (asString rhs)
-          LStrLen    -> mkStrLen (asType stringTy $ translateReg arg)
+          LStrLen    -> mkCall "RuneCountInString" [asString arg]
 
           (LStrInt ITNative)     -> mkCast intTy $ mkCall "StringToInt" [asString arg]
           (LIntStr ITNative)     -> mkToString $ translateReg arg
@@ -416,15 +416,15 @@ instance CompileInfo CompileGo where
           LFFloor -> floatfn "Floor" arg
           LFCeil  -> floatfn "Ceil"  arg
 
-          LStrCons -> mkCall "Sprintf" [ASTString "%c%s", asType charTy $ translateReg lhs, asString rhs]
+          LStrCons  -> mkCall "Sprintf" [ASTString "%c%s", asType charTy $ translateReg lhs, asString rhs]
 
-          LStrHead -> ASTIndex (asString arg) mkZero
+          LStrHead  -> mkCall "Utf8Head" [asString arg]
 
-          LStrRev   -> mkCall "reverse" [asType stringTy $ translateReg arg]
+          LStrRev   -> mkCall "Utf8Reverse" [asString arg]
 
-          LStrIndex -> ASTIndex (asString arg) (asType intTy $ translateReg rhs)
+          LStrIndex -> mkCall "Utf8AtIndex" [asString lhs, asType intTy $ translateReg rhs]
 
-          LStrTail  -> ASTIndex (asString arg) (ASTRaw "1:")
+          LStrTail  -> mkCall "Utf8Tail" [asString arg]
 
           LReadStr    -> mkCall "FileReadLine" [asType fileTy $ translateReg arg]
           LSystemInfo -> ASTString "golang backend (stub version info)"
@@ -442,8 +442,6 @@ instance CompileInfo CompileGo where
 
             mkTrunc src dst mask =
               mkCast (wordTy dst) (mkBitAnd (asType src $ translateReg arg) (ASTRaw mask))
-
-            mkStrLen s = mkCall "len" [s]
 
             mkIntCast ty expr = mkCast (arithTy (ATInt ty)) expr
 
@@ -581,7 +579,7 @@ intTy        = "int"
 bigIntTy     = "*big.Int"
 floatTy      = "float64"
 stringTy     = "string"
-charTy       = "byte" -- TODO: switch to "rune" and unicode functions
+charTy       = "rune"
 managedPtrTy = "*interface{}" -- TODO: placeholder
 ptrTy        = "Ptr"
 conTy        = "Con"
