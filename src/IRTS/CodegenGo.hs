@@ -67,13 +67,15 @@ codegenGo_all definitions outputType filename includes objs libs flags dbg = do
   let go = concatMap (toGo info) bytecode
   path <- getDataDir
   let goout = (  T.pack "package main\n\n"
-                  `T.append` mkImport "reflect"
-                  `T.append` mkImport "os"
-                  `T.append` mkImport "unicode/utf8"
-                  `T.append` mkImport "fmt"
-                  `T.append` mkImport "math"
-                  `T.append` mkQualifiedImport "math/big"
-                  `T.append` mkImport "idris_runtime"
+                  `T.append` mkImport ". reflect"
+                  `T.append` mkImport ". os"
+                  `T.append` mkImport ". unicode/utf8"
+                  `T.append` mkImport ". fmt"
+                  `T.append` mkImport ". math"
+                  `T.append` mkImport "  math/big"
+                  `T.append` mkImport ". idris_runtime"
+                  `T.append` "\n"
+                  `T.append` imports includes
                   `T.append` "\n"
                   `T.append` T.concat (map (compile info) go)
                   `T.append` mkIgnoreUnusedImports
@@ -94,20 +96,23 @@ codegenGo_all definitions outputType filename includes objs libs flags dbg = do
             when (exit /= ExitSuccess) $
               putStrLn ("FAILURE: " ++ cc)
     where
-      mkImport :: String -> T.Text
-      mkImport pkg = T.pack $ PF.printf "import . \"%s\"\n" pkg
-
-      mkQualifiedImport :: String -> T.Text
-      mkQualifiedImport pkg = T.pack $ PF.printf "import \"%s\"\n" pkg
+      mkImport pkg = "import " `T.append` qual `T.append` " \"" `T.append` imp `T.append` "\"\n"
+        where
+          ps = T.words pkg
+          qual = case ps of (w:_:_) -> w
+                            [w]     -> " "
+          imp = last ps
 
       mkIgnoreUnusedImports = T.pack (foldr (++) "\n" (map ("\nconst _ = " ++) consts)) `T.append`
                               T.pack (foldr (++) "\n" (map ("\nvar _ " ++) types))
         where consts = ["SelectDefault", "UTFMax", "Pi", "big.MaxBase", "DevNull"]
               types = ["State"]
 
-      mkMain = T.pack $ "func main () {\n" ++
-                        "  vm := VirtualMachine{}\n" ++
-                        "  Call(&vm, _idris__123_runMain0_125_, 0)\n" ++
+      imports xs = T.concat (map (mkImport . T.pack) xs)
+
+      mkMain = T.pack $ "func main() {\n" ++
+                        "  " ++ vm ++ " := " ++ vmType ++ "{}\n" ++
+                        "  Call(&" ++ vm ++ ", " ++ vmMainFn ++ ", 0)\n" ++
                         "}\n"
 toGo info (name, bc) =
   [ ASTIdent $ "func " ++ translateName name,
@@ -215,41 +220,46 @@ instance CompileInfo CompileGo where
         generateWrapper :: (FType, Reg) -> ASTNode
         generateWrapper (ty, reg) =
           case ty of
-            FFunction aty rty -> mkCall "LAMBDA_WRAPPER" [translateReg reg, cType aty, cType rty]
+            FFunction aty rty -> let rs = goType rty in
+                                 genClosure reg (genArgs (goType aty ++ init rs)) (last $ rs)
+
             FFunctionIO -> error "FFunctionIO not supported yet"
-            _ -> asType (T.unpack . (compile info) $ foreignToAST ty) $ translateReg reg
 
-        cType :: FType -> ASTNode
-        cType (FArith (ATInt ITNative))       = ASTIdent "int"
-        cType (FArith (ATInt ITChar))         = ASTIdent "char"
-        cType (FArith (ATInt ITBig))          = ASTIdent "long long"
-        cType (FArith (ATInt (ITFixed IT8)))  = ASTIdent "int8_t"
-        cType (FArith (ATInt (ITFixed IT16))) = ASTIdent "int16_t"
-        cType (FArith (ATInt (ITFixed IT32))) = ASTIdent "int32_t"
-        cType (FArith (ATInt (ITFixed IT64))) = ASTIdent "int64_t"
-        cType FString = ASTIdent "string"
-        cType FUnit = ASTIdent "void"
-        cType FPtr = ASTIdent "void*"
-        cType FManagedPtr = ASTIdent "*interface{}" -- TODO: placeholder
-        cType (FArith ATFloat) = ASTIdent "double"
-        cType FAny = ASTIdent "void*"
-        cType (FFunction a b) = ASTList [cType a, cType b]
+            _ -> asType (head $ goType ty) (translateReg reg)
 
-        foreignToAST :: FType -> ASTNode
-        foreignToAST (FArith (ATInt ITNative))       = ASTIdent intTy
-        foreignToAST (FArith (ATInt ITChar))         = ASTIdent charTy
-        foreignToAST (FArith (ATInt ITBig))          = ASTIdent bigIntTy
-        foreignToAST (FArith (ATInt (ITFixed IT8)))  = ASTIdent (wordTy 8)
-        foreignToAST (FArith (ATInt (ITFixed IT16))) = ASTIdent (wordTy 16)
-        foreignToAST (FArith (ATInt (ITFixed IT32))) = ASTIdent (wordTy 32)
-        foreignToAST (FArith (ATInt (ITFixed IT64))) = ASTIdent (wordTy 64)
-        foreignToAST FString = ASTIdent stringTy
-        -- foreignToAST FUnit = ASTIdent "void"
-        foreignToAST FPtr = ASTIdent ptrTy
-        foreignToAST FManagedPtr = ASTIdent managedPtrTy
-        foreignToAST (FArith ATFloat) = ASTIdent floatTy
-        foreignToAST FAny = ASTIdent ptrTy
-        -- foreignToAST (FFunction a b) = ASTList [cType a, cType b]
+        goType :: FType -> [String]
+        goType (FArith (ATInt ITNative))       = [intTy]
+        goType (FArith (ATInt ITChar))         = [charTy]
+        goType (FArith (ATInt ITBig))          = [bigIntTy]
+        goType (FArith (ATInt (ITFixed IT8)))  = [wordTy  8]
+        goType (FArith (ATInt (ITFixed IT16))) = [wordTy 16]
+        goType (FArith (ATInt (ITFixed IT32))) = [wordTy 32]
+        goType (FArith (ATInt (ITFixed IT64))) = [wordTy 64]
+        goType FString                         = [stringTy]
+        goType FUnit                           = [""]
+        goType FPtr                            = ["interface{}"]
+        goType FManagedPtr                     = ["interface{}"] -- TODO: placeholder
+        goType (FArith ATFloat)                = [floatTy]
+        goType FAny                            = ["interface{}"]
+        goType (FFunction a b)                 = concat [goType a, goType b]
+
+        genArgs :: [String] -> [(String, String)]
+        genArgs typs = zip ((map (\n -> "arg" ++ show n)) [1..]) typs
+
+        genClosure :: Reg -> [(String, String)] -> String -> ASTNode
+        genClosure con xs r = ASTRaw $ "func(" ++ intercalate ", " (map (genDecl) xs) ++ ") " ++ r ++ " " ++
+          "{" ++
+            "ProxyFunction(" ++
+            vm ++ ", " ++
+            vmApplyFn ++ ", " ++
+            T.unpack (compile' info 0 $ translateReg con) ++ ", " ++
+            (intercalate "," (map fst xs)) ++ "); " ++
+            retIfNeeded ++
+          "}"
+          where retIfNeeded = if r == "" then "" else T.unpack (compile' info 0 (ASTReturn (asType r mkRet)))
+
+        genDecl :: (String, String) -> String
+        genDecl (v,t) = v ++ " " ++ t
 
   mkTopBase _ 0  = ASTAssign mkStacktop mkStackbase
   mkTopBase _ n  = ASTAssign mkStacktop (mkAdd mkStackbase (ASTNum (ASTInt n)))
@@ -475,6 +485,10 @@ baseType  = "uintptr"
 oldbase   = "oldbase"
 myoldbase = "myoldbase"
 
+vmType ="VirtualMachine"
+vmApplyFn = "_idris__123_APPLY0_125_"
+vmMainFn = "_idris__123_runMain0_125_"
+
 mkVm        = ASTIdent vm
 mkStack     = ASTPtrProj mkVm "ValueStack"
 mkCallstack = ASTPtrProj mkVm "CallStack"
@@ -498,7 +512,7 @@ mkPop       = ASTBinOp ";" (mkMeth mkCallstack "top" []) (mkMeth mkCallstack "po
 -- mkIsCon obj = mkAnd obj (mkEq (mkPtrMeth obj "getTypeId" []) (ASTIdent "Con::typeId"))
 
 fnParams :: [String]
-fnParams = [vm ++ " *VirtualMachine", oldbase ++ " " ++ baseType]
+fnParams = [vm ++ " *" ++ vmType ++ ", " ++ oldbase ++ " " ++ baseType]
 
 asType :: String -> ASTNode -> ASTNode
 asType typ obj =  ASTProj (ASTProj (mkCall "ValueOf" [obj]) "Interface()") ("(" ++ typ ++ ")")

@@ -15,8 +15,10 @@ type VirtualMachine struct {
   CallStack []CallPair
 }
 
+type vmFunction func(vm *VirtualMachine, oldbase uintptr)
+
 type CallPair struct {
-  fn func(vm *VirtualMachine, oldbase uintptr)
+  fn vmFunction
   base uintptr
 }
 
@@ -87,7 +89,7 @@ func Reserve(vm *VirtualMachine, size uintptr) {
   }
 }
 
-func Call(vm *VirtualMachine, fn func(vm *VirtualMachine, oldbase uintptr), base uintptr) {
+func Call(vm *VirtualMachine, fn vmFunction, base uintptr) {
   fn(vm, base)
   for length := len((*vm).CallStack); length > 0; length = len((*vm).CallStack) {
     top := (*vm).CallStack[length - 1]
@@ -98,7 +100,7 @@ func Call(vm *VirtualMachine, fn func(vm *VirtualMachine, oldbase uintptr), base
   }
 }
 
-func TailCall(vm *VirtualMachine, fn func(vm *VirtualMachine, oldbase uintptr), base uintptr) {
+func TailCall(vm *VirtualMachine, fn vmFunction, base uintptr) {
    (*vm).CallStack = append((*vm).CallStack, CallPair{fn, base})
 }
 
