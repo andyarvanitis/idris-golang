@@ -59,7 +59,7 @@ codegenGo_all definitions outputType filename includes objs libs flags dbg = do
   let bytecode = map toBC definitions
   let go = concatMap (toGo info) bytecode
   path <- getDataDir
-  let goout = (  T.pack "package main\n\n"
+  let goOut = (  T.pack "package main\n\n"
                   `T.append` mkImport ". reflect"
                   `T.append` mkImport ". os"
                   `T.append` mkImport ". unicode/utf8"
@@ -77,9 +77,9 @@ codegenGo_all definitions outputType filename includes objs libs flags dbg = do
                   `T.append` "\n"
                )
   case outputType of
-    Raw -> TIO.writeFile filename goout
+    Raw -> TIO.writeFile filename goOut
     _ -> do (tmpn, tmph) <- tempfile
-            hPutStr tmph (T.unpack goout)
+            hPutStr tmph (T.unpack goOut)
             hFlush tmph
             hClose tmph
             let cc =

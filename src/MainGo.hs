@@ -6,8 +6,10 @@ import Idris.ElabDecls
 import Idris.REPL
 
 import IRTS.Compiler
+import IRTS.CodegenCommon
 import IRTS.CodegenGo
 
+import Data.List
 import System.Environment
 import System.Exit
 
@@ -29,8 +31,11 @@ go_main :: Opts -> Idris ()
 go_main opts = do elabPrims
                   loadInputs (inputs opts) Nothing
                   mainProg <- elabMain
-                  ir <- compile (Via "go") (output opts) mainProg
-                  runIO $ codegenGo ir
+                  ir <- compile (Via "go") outputFilename mainProg
+                  let ir' = if ".go" `isSuffixOf` outputFilename then ir {outputType=Raw}
+                                                                 else ir
+                  runIO $ codegenGo ir'
+                    where outputFilename = output opts
 
 main :: IO ()
 main = do opts <- getOpts
