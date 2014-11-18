@@ -89,12 +89,14 @@ codegenGo_all definitions outputType filename includes objs libs flags dbg = do
             when (exit /= ExitSuccess) $
               putStrLn ("FAILURE: " ++ cc)
     where
-      mkImport pkg = "import " `T.append` qual `T.append` " \"" `T.append` imp `T.append` "\"\n"
+      mkImport s = case qual of "//" -> s `T.append` "\n"
+                                _    -> "import " `T.append` imp
         where
-          ps = T.words pkg
-          qual = case ps of (w:_:_) -> w
+          ws = T.words s
+          qual = case ws of (w:_:_) -> w
                             [w]     -> " "
-          imp = last ps
+          pkg = last ws
+          imp = qual `T.append` " \"" `T.append` pkg `T.append` "\"\n"
 
       mkIgnoreUnusedImports = T.pack (foldr (++) "\n" (map ("\nconst _ = " ++) consts)) `T.append`
                               T.pack (foldr (++) "\n" (map ("\nvar _ " ++) types))
