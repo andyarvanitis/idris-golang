@@ -1,4 +1,4 @@
-idris-cplusplus
+idris-golang
 ===============
 
-Experimental C++11 backend for Idris
+Experimental Google Go backend for Idris

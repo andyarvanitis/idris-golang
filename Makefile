@@ -9,10 +9,7 @@ install:
 build: dist/setup-config
 	$(CABAL) build $(CABALFLAGS)
 
-test: test_cpp test_go
-
-test_cpp:
-	cd ../Idris-dev/test && ./runtest.pl without io003 --codegen cpp
+test: test_go
 
 test_go:
 	cd ../Idris-dev/test && ./runtest.pl without io003 reg031 effects002 --codegen go
@@ -20,7 +17,6 @@ test_go:
 
 lib_clean:
 clean:
-	$(MAKE) -C cpprts clean
 	$(MAKE) -C gorts clean
 
 dist/setup-config:

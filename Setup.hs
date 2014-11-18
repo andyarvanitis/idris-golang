@@ -26,7 +26,6 @@ make verbosity =
 
 
 idrisRuntimeClean _ flags _ _ = do
-        make verbosity [ "-C", "cpprts", "clean", "IDRIS=idris" ]
         make verbosity [ "-C", "gorts", "clean", "IDRIS=idris" ]
     where
         verbosity = S.fromFlag $ S.cleanVerbosity flags
@@ -37,17 +36,14 @@ idrisRuntimeInstall verbosity copy pkg local = do
         target = datadir $ L.absoluteInstallDirs pkg local copy
         installRTS = do
             putStrLn $ "Installing c++ runtime in " ++ target
-            makeInstall "cpprts" target
             makeInstall "gorts" target
         makeInstall src target =
             make verbosity [ "-C", src, "install", "TARGET=" ++ target ]
 
 idrisRuntimeBuild _ flags _ local = do
-        buildCpp
         buildGo
     where
         verbosity = S.fromFlag $ S.buildVerbosity flags
-        buildCpp = make verbosity ["-C", "cpprts", "build"]
         buildGo = make verbosity ["-C", "gorts", "build"]
 
 main = defaultMainWithHooks $ simpleUserHooks
