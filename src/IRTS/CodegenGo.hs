@@ -29,7 +29,7 @@ import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Text.Printf as PF
 
-import Paths_idris_cpp
+import Paths_idris_go
 
 data CompileGo = CompileGo Bool -- TODO: just a placeholder
 
