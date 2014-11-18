@@ -103,7 +103,7 @@ codegenGo_all definitions outputType filename includes objs libs flags dbg = do
         where consts = ["SelectDefault", "UTFMax", "Pi", "big.MaxBase", "DevNull"]
               types = ["State"]
 
-      imports xs = T.concat (map (mkImport . T.pack) xs)
+      imports xs = T.concat (map (mkImport . T.pack) (reverse xs))
 
       mkMain = T.pack $ "func main() {\n" ++
                         "  " ++ vm ++ " := " ++ vmType ++ "{}\n" ++
