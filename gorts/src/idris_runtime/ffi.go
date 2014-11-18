@@ -19,7 +19,7 @@ func ProxyFunction(vm *VirtualMachine,
   conType := ValueOf(con).Type()
   res := con
 
-  for _, arg := range args {
+  apply := func(arg interface{}) {
     if ValueOf(res).Type() == conType {
       Reserve(vm, (*vm).ValueStackTop + 2)
       (*vm).ValueStack[(*vm).ValueStackTop] = res
@@ -31,6 +31,13 @@ func ProxyFunction(vm *VirtualMachine,
       res = (*vm).ReturnValue
     }
   }
+
+  for _, arg := range args {
+    apply(arg)
+  }
+
+  // Specifically for cases of IO functions
+  apply(res)
 
   // Restore the original stack
   copy((*vm).CallStack, savedCallStack)

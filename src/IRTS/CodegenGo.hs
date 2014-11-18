@@ -215,12 +215,12 @@ instance CompileInfo CompileGo where
         generateWrapper :: (FType, Reg) -> ASTNode
         generateWrapper (ty, reg) =
           case ty of
-            FFunction aty rty -> let rs = goType rty in
-                                 genClosure reg (genArgs (goType aty ++ init rs)) (last $ rs)
-
-            FFunctionIO -> error "FFunctionIO not supported yet"
-
+            FFunction aty rty -> ffunc aty rty
+            FFunctionIO aty rty -> ffunc aty rty
             _ -> asType (head $ goType ty) (translateReg reg)
+
+          where ffunc aty rty = let rs = goType rty in
+                                genClosure reg (genArgs (goType aty ++ init rs)) (last $ rs)
 
         goType :: FType -> [String]
         goType (FArith (ATInt ITNative))       = [intTy]
