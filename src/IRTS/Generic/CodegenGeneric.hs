@@ -1,14 +1,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE PatternGuards #-}
 
-module IRTS.CodegenGeneric where
+module IRTS.Generic.CodegenGeneric where
 
 import IRTS.Bytecode
 import IRTS.Lang
 import IRTS.Simplified
 import IRTS.CodegenCommon
-import IRTS.CodegenFFI
-import IRTS.AST
+import IRTS.Generic.AST
+import IRTS.Generic.CodegenFFI
 import Idris.Core.TT
 
 import Numeric

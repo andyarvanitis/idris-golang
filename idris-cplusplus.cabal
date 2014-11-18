@@ -24,8 +24,8 @@ Executable idris-cpp
                 , vector
 
   other-modules: IRTS.CodegenCpp
-               , IRTS.AST
-               , IRTS.CodegenGeneric
+               , IRTS.Generic.AST
+               , IRTS.Generic.CodegenGeneric
 
   if os(linux)
      cpp-options:   -DLINUX
@@ -63,8 +63,8 @@ Executable idris-go
                 , vector
 
   other-modules: IRTS.CodegenGo
-               , IRTS.AST
-               , IRTS.CodegenGeneric
+               , IRTS.Generic.AST
+               , IRTS.Generic.CodegenGeneric
 
   ghc-prof-options: -auto-all -caf-all
   ghc-options:      -threaded -rtsopts -funbox-strict-fields

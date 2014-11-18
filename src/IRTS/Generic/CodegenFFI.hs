@@ -1,6 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module IRTS.CodegenFFI where
+module IRTS.Generic.CodegenFFI where
 
 import Data.Char
 import Data.List (intersperse)

@@ -1,4 +1,4 @@
-module IRTS.AST where
+module IRTS.Generic.AST where
 
 import Data.Word
 

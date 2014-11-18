@@ -8,9 +8,9 @@ import IRTS.Lang
 import IRTS.Simplified
 import IRTS.System hiding (getDataDir)
 import IRTS.CodegenCommon
-import IRTS.AST
-import IRTS.CodegenGeneric
-import IRTS.CodegenFFI
+import IRTS.Generic.AST
+import IRTS.Generic.CodegenGeneric
+import IRTS.Generic.CodegenFFI
 import Idris.Core.TT
 import Util.System
 
