@@ -4,9 +4,11 @@ include config.mk
 -include custom.mk
 
 install:
+	git submodule update --init
 	$(CABAL) install $(CABALFLAGS)
 
 build: dist/setup-config
+	git submodule update --init
 	$(CABAL) build $(CABALFLAGS)
 
 test: test_go
