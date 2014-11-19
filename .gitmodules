@@ -1,0 +1,3 @@
+[submodule "src/IRTS/Generic"]
+	path = src/IRTS/Generic
+	url = git@github.com:andyarvanitis/idris-generic.git
