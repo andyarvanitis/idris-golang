@@ -8,6 +8,7 @@
 ### Some features/benefits
 * Easy interop with Go, as well as with C via cgo (already supported)
 * UTF-8 support
+* With no tweaking yet, performance seems quite good -- almost as fast as C backend
 
 ### Niceties/notes
 * Go compiles pretty fast, which is nice when using it for a language backend
