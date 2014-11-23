@@ -1,4 +1,34 @@
-idris-golang
-===============
+### Experimental Google Go backend for Idris
 
-Experimental Google Go backend for Idris
+### Some motivations for this
+* I felt like improving my Haskell and learning Go
+* ???
+* Profit
+
+### Some features/benefits
+* Easy interop with Go, as well as with C via cgo (already supported)
+* UTF-8 support
+
+### Niceties/notes
+* Go compiles pretty fast, which is nice when using it for a language backend
+* Go has a reasonably-well-performing GC (which is continually being improved)
+* Go has built-in unicode support (used by this backend)
+* Go has standard lib big int support (used by this backend)
+* Go has nice reflection features (used by this backend, made things pretty easy)
+* No Go third-party libraries needed or used for this backend
+* Most of the official tests run successfully -- see the [Makefile](https://github.com/andyarvanitis/idris-golang/blob/master/Makefile)
+
+### Some code examples
+* UTF-8 support, so this works and produces "βγδ" as output (the C backend doesn't yet):
+```Idris
+module Main
+
+greek : String
+greek = "αβγδ"
+
+main : IO ()
+main = do
+  putStrLn "Running Idris main"
+  putStrLn $ "Greek: " ++ (strTail greek)
+
+	
