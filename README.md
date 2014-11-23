@@ -6,7 +6,7 @@
 * Profit
 
 ### Some features/benefits
-* Easy interop with Go, as well as with C via cgo (already supported)
+* Easy interop with Go, as well as with C via cgo
 * UTF-8 support
 * Callbacks from Go (into Idris) support
 * With no tweaking yet, performance seems quite good -- almost as fast as C backend
