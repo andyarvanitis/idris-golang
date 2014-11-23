@@ -1,7 +1,7 @@
 ### Experimental Google Go backend for Idris
 
-### Some motivations for this
-* I felt like improving my Haskell and learning Go
+### Motivations for this
+* I felt like improving my Haskell and Idris, and learning Go
 * ???
 * Profit
 
