@@ -53,7 +53,6 @@ main = do
 module Main
 
 %include go "// #include <stdio.h>"
-%include go "// #include <stdlib.h>"
 %include go "C"
 
 c_putchar : Char -> IO Int
