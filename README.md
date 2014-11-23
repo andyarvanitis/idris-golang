@@ -46,3 +46,23 @@ goprint s = mkForeign (FFun "fmt.Println(%0)" [FString] FUnit) s
 main : IO ()
 main = do
   goprint "Hello, world!"
+```
+
+* Calling a C function via the FFI (via cgo)
+```Idris
+module Main
+
+%include go "// #include <stdio.h>"
+%include go "// #include <stdlib.h>"
+%include go "C"
+
+c_putchar : Char -> IO Int
+c_putchar c = mkForeign (FFun "C.putchar(C.int(%0))" [FChar] FInt) c
+
+main : IO ()
+main = do
+
+  _ <- c_putchar('B')
+  _ <- c_putchar('\n')
+
+  return ()
