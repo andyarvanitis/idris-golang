@@ -31,5 +31,17 @@ main : IO ()
 main = do
   putStrLn "Running Idris main"
   putStrLn $ "Greek: " ++ (strTail greek)
+```
 
-	
+* Calling a Go function via the FFI
+```Idris
+module Main
+
+%include go "fmt"
+
+goprint : String -> IO ()
+goprint s = mkForeign (FFun "fmt.Println(%0)" [FString] FUnit) s
+
+main : IO ()
+main = do
+  goprint "Hello, world!"
