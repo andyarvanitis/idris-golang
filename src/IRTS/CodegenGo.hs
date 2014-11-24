@@ -25,6 +25,8 @@ import System.FilePath ((</>), normalise)
 import Control.Monad.State
 import Control.Arrow
 
+import Debug.Trace
+
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
 import qualified Text.Printf as PF
@@ -235,7 +237,8 @@ instance CompileInfo CompileGo where
         goType FPtr                            = ["interface{}"]
         goType FManagedPtr                     = ["interface{}"] -- TODO: placeholder
         goType (FArith ATFloat)                = [floatTy]
-        goType FAny                            = ["interface{}"]
+        goType (FAny (Constant c))             = [translatedType (translateConstant c)]
+        goType (FAny a)                        = ["interface{}"]
         goType (FFunction a b)                 = concat [goType a, goType b]
 
         genArgs :: [String] -> [(String, String)]
@@ -509,15 +512,21 @@ asType typ obj =  ASTProj (ASTProj (mkCall "ValueOf" [obj]) "Interface()") ("(" 
 
 translatedType :: ASTNode -> String
 translatedType e = case e of
-                  (ASTString _)                       -> stringTy
-                  (ASTNum (ASTFloat _))               -> floatTy
-                  (ASTNum _)                          -> intTy
-                  (ASTChar _)                         -> charTy
-                  (ASTWord (ASTWord8 _))              -> wordTy 8
-                  (ASTWord (ASTWord16 _))             -> wordTy 16
-                  (ASTWord (ASTWord32 _))             -> wordTy 32
-                  (ASTWord (ASTWord64 _))             -> wordTy 64
-                  _                                   -> ""
+                  (ASTString _)           -> stringTy
+                  (ASTNum (ASTFloat _))   -> floatTy
+                  (ASTNum _)              -> intTy
+                  (ASTChar _)             -> charTy
+                  (ASTWord (ASTWord8 _))  -> wordTy 8
+                  (ASTWord (ASTWord16 _)) -> wordTy 16
+                  (ASTWord (ASTWord32 _)) -> wordTy 32
+                  (ASTWord (ASTWord64 _)) -> wordTy 64
+                  (ASTType ASTIntTy)      -> intTy
+                  (ASTType ASTStringTy)   -> stringTy
+                  (ASTType ASTIntegerTy)  -> bigIntTy
+                  (ASTType ASTFloatTy)    -> floatTy
+                  (ASTType ASTCharTy)     -> charTy
+                  (ASTType ASTPtrTy)      -> ptrTy
+                  _                       -> ""
 
 mkToString :: ASTNode -> ASTNode
 mkToString value = mkCall "Sprint" [value]
