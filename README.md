@@ -3,7 +3,6 @@
 ### Motivations for this
 * I felt like improving my Haskell and Idris, and learning Go
 * ???
-* Profit
 
 ### Some features/benefits
 * Easy interop with Go, as well as with C via cgo
