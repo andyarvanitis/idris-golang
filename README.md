@@ -17,7 +17,7 @@
 * Go has standard lib big int support (used by this backend)
 * Go has nice reflection features (used by this backend, made things pretty easy)
 * No Go third-party libraries needed or used by this backend
-* Most of the official tests run successfully -- see the [Makefile](https://github.com/andyarvanitis/idris-golang/blob/master/Makefile)
+* Most of the official Idris tests run successfully -- see the [Makefile](https://github.com/andyarvanitis/idris-golang/blob/master/Makefile)
 
 ### Some code examples
 * UTF-8 support, so this works and produces "βγδ" as output (the C backend doesn't yet)
