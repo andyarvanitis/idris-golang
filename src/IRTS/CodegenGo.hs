@@ -508,7 +508,7 @@ fnParams :: [String]
 fnParams = [vm ++ " *" ++ vmType ++ ", " ++ oldbase ++ " " ++ baseType]
 
 asType :: String -> ASTNode -> ASTNode
-asType typ obj =  ASTProj (ASTProj (mkCall "ValueOf" [obj]) "Interface()") ("(" ++ typ ++ ")")
+asType typ obj =  ASTProj obj ("(" ++ typ ++ ")")
 
 translatedType :: ASTNode -> String
 translatedType e = case e of
