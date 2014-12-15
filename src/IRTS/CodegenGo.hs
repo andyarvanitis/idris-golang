@@ -271,8 +271,7 @@ instance CompileInfo CompileGo where
 
   mkRebase _ = ASTAssign mkStackbase mkOldbase
 
-  mkReserve _ 0 = ASTNoop
-  mkReserve _ n = mkCall "Reserve" [mkVm, ASTNum (ASTInt n)]
+  mkReserve _ n = mkCall "Reserve" [mkVm, mkAdd mkStacktop (ASTNum $ ASTInt n)]
 
   mkMakeCon info r t rs = 
     ASTAssign (translateReg r) (mkCall "MakeCon" [ASTList $ ASTNum (ASTInt t) : args rs])
@@ -478,7 +477,7 @@ instance CompileInfo CompileGo where
 ---------------------------------------------------------------------------------------------------
 
 vm        = "vm"
-baseType  = "int"
+baseType  = "uintptr"
 oldbase   = "oldbase"
 myoldbase = "myoldbase"
 
