@@ -39,7 +39,7 @@ func Project(vm *VirtualMachine, value interface{}, loc uintptr, arity uintptr) 
 }
 
 func Reserve(vm *VirtualMachine, size uintptr) {
-  for i := uintptr(len((*vm).ValueStack)); i < size; i++ {
+  for i := uintptr(len((*vm).ValueStack)); i < size + 2; i++ { // TODO: why +2 now?
     (*vm).ValueStack = append((*vm).ValueStack, nil)
   }
 }
