@@ -16,7 +16,8 @@ import Numeric
 import Data.Char
 import Data.Int
 import Data.Word
-import Data.List (intercalate)
+import Data.List (intercalate, find)
+import Data.Maybe (fromMaybe)
 import System.Process
 import System.Exit
 import System.IO
@@ -43,7 +44,7 @@ codegenGo ci =
                  (includes ci)
                  [] -- objc (currently unused)
                  [] -- libs (currently unused)
-                 [] -- compiler flags (currently unused)
+                 (compilerFlags ci) -- compiler flags
                  (debugLevel ci) -- (currently unused)
 codegenGo_all ::
      [(Name, SDecl)] -> -- declarations/definitions
@@ -52,7 +53,7 @@ codegenGo_all ::
      [FilePath] ->      -- include files
      String ->          -- extra object files`as
      String ->          -- libraries
-     String ->          -- extra compiler flags
+     [String] ->        -- extra compiler flags
      DbgLevel ->        -- debug level
      IO ()
 
@@ -61,7 +62,8 @@ codegenGo_all definitions outputType filename includes objs libs flags dbg = do
   let bytecode = map toBC definitions
   let go = concatMap (toGo info) bytecode
   path <- getDataDir
-  let goOut = (  T.pack "package main\n\n"
+  let goOut = (   package (map T.pack flags)
+                  `T.append` "\n\n"
                   `T.append` mkImport ". reflect"
                   `T.append` mkImport ". os"
                   `T.append` mkImport ". unicode/utf8"
@@ -107,10 +109,14 @@ codegenGo_all definitions outputType filename includes objs libs flags dbg = do
 
       imports xs = T.concat (map (mkImport . T.pack) (reverse xs))
 
+      package :: [T.Text] -> T.Text
+      package fs = fromMaybe "package main" (find (T.isPrefixOf "package ") fs)
+
       mkMain = T.pack $ "func main() {\n" ++
                         "  " ++ vm ++ " := " ++ vmType ++ "{}\n" ++
                         "  Call(&" ++ vm ++ ", " ++ vmMainFn ++ ", 0)\n" ++
-                        "}\n"
+                        "}\n" ++
+                        "var Main = main"
 toGo info (name, bc) =
   [ ASTIdent $ "func " ++ translateName name,
     ASTFunction fnParams (
@@ -217,8 +223,8 @@ instance CompileInfo CompileGo where
         generateWrapper :: (FType, Reg) -> ASTNode
         generateWrapper (ty, reg) =
           case ty of
-            FFunction aty rty -> ffunc aty rty
-            FFunctionIO aty rty -> ffunc aty rty
+            FFunction -> ffunc FUnit FUnit
+            FFunctionIO -> ffunc FUnit FUnit
             _ -> asType (head $ goType ty) (translateReg reg)
 
           where ffunc aty rty = let rs = goType rty in
@@ -237,9 +243,8 @@ instance CompileInfo CompileGo where
         goType FPtr                            = ["interface{}"]
         goType FManagedPtr                     = ["interface{}"] -- TODO: placeholder
         goType (FArith ATFloat)                = [floatTy]
-        goType (FAny (Constant c))             = [translatedType (translateConstant c)]
-        goType (FAny a)                        = ["interface{}"]
-        goType (FFunction a b)                 = concat [goType a, goType b]
+        goType FAny                            = ["interface{}"]
+        goType FFunction                       = concat [goType FUnit, goType FUnit]
 
         genArgs :: [String] -> [(String, String)]
         genArgs typs = zip ((map (\n -> "arg" ++ show n)) [1..]) typs
